@@ -617,7 +617,12 @@ function buildHole(h, field, out, rng) {
     const bed0 = local(-w * 0.34, gd * 0.52), bed1 = local(w * 0.34, gd * 0.9);
     const bcx = (bed0.x + bed1.x) / 2, bcz = (bed0.z + bed1.z) / 2;
     out.soil.push({ x: bcx, z: bcz, w: w * 0.36, d: gd * 0.2, rot: h.rot });
-    put(b);
+    // The garden is laid out through `local()`, which already puts it
+    // in world coordinates, and every wall in it has to ask the field
+    // for its ground. Merging it with the hole's own matrix as well
+    // turns each garden round a second time and throws it a hundred
+    // metres across the county, hanging in the air.
+    out.wall.mergeGeo(b.build(), new THREE.Matrix4());
   }
 
   /* ============================================================
