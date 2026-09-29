@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<meta name="theme-color" content="#1d2a18" />
+<meta name="color-scheme" content="dark" />
+<meta name="description" content="A walkable, film-accurate recreation of the Shire from The Lord of the Rings. Explore Hobbiton, the Party Tree, the Mill and the Water, in your browser." />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<title>The Shire &mdash; A Walk</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Ccircle cx='32' cy='32' r='32' fill='%23557a2f'/%3E%3Ccircle cx='32' cy='32' r='21' fill='%232e5a1e' stroke='%23c9a227' stroke-width='3'/%3E%3Ccircle cx='32' cy='32' r='4' fill='%23d9b44a'/%3E%3C/svg%3E" />
+<link rel="stylesheet" href="styles.css" />
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.169.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.169.0/examples/jsm/"
+  }
+}
+</script>
+</head>
+<body>
+
+<div id="stage">
+  <canvas id="scene"></canvas>
+
+  <!-- photo-mode letterbox bars -->
+  <div id="bars" aria-hidden="true"><i></i><i></i></div>
+
+  <!-- ============ HUD ============ -->
+  <div id="hud">
+    <div id="crosshair" aria-hidden="true"></div>
+
+    <div id="readout">
+      <div id="place">&nbsp;</div>
+      <div id="clock"><span id="clock-time">06:20</span><span id="clock-phase">first light</span></div>
+    </div>
+
+    <div id="hint">
+      <span class="k">WASD</span> walk
+      <span class="sep"></span>
+      <span class="k">Shift</span> run
+      <span class="sep"></span>
+      <span class="k">E</span> look
+      <span class="sep"></span>
+      <span class="k">H</span> help
+    </div>
+
+    <div id="prompt" class="hidden"><span class="key">E</span><span id="prompt-text"></span></div>
+
+    <div id="toasts" aria-live="polite"></div>
+
+    <div id="minimap" class="hidden">
+      <canvas id="minimap-canvas" width="220" height="220"></canvas>
+      <div id="minimap-label">The Shire</div>
+    </div>
+
+    <div id="stats" class="hidden"></div>
+  </div>
+
+  <!-- ============ touch controls ============ -->
+  <div id="touch" class="hidden" aria-hidden="true">
+    <div id="stick"><i id="stick-knob"></i></div>
+    <div id="tbuttons">
+      <button id="btn-run" class="tbtn" type="button">run</button>
+      <button id="btn-act" class="tbtn primary" type="button">look</button>
+      <button id="btn-map" class="tbtn" type="button">map</button>
+      <button id="btn-help" class="tbtn" type="button">?</button>
+    </div>
+  </div>
+
+  <!-- ============ overlays ============ -->
+  <div id="loader">
+    <div class="loader-inner">
+      <div class="ring"><i></i></div>
+      <h1>The Shire</h1>
+      <p class="quote">&ldquo;In a hole in the ground there lived a hobbit.&rdquo;</p>
+      <div class="track"><i id="bar"></i></div>
+      <p class="status" id="load-status">waking the county&hellip;</p>
+    </div>
+  </div>
+
+  <div id="menu" class="hidden">
+    <div class="panel">
+      <h2>The Shire</h2>
+      <p class="sub">A walk, at your own pace</p>
+      <button id="btn-enter" class="big" type="button">Click to walk</button>
+      <div class="opts">
+        <div class="opt">
+          <label for="sel-quality">Detail</label>
+          <select id="sel-quality">
+            <option value="0">Low</option>
+            <option value="1">Medium</option>
+            <option value="2">High</option>
+          </select>
+        </div>
+        <div class="opt">
+          <label for="sel-time">Time of day</label>
+          <select id="sel-time">
+            <option value="dawn">First light</option>
+            <option value="noon">Midday</option>
+            <option value="gold">Golden hour</option>
+            <option value="dusk">Dusk</option>
+            <option value="night">Night</option>
+          </select>
+        </div>
+        <div class="opt">
+          <label for="chk-cycle">Day cycle</label>
+          <input id="chk-cycle" type="checkbox" checked />
+        </div>
+      </div>
+      <p class="credit">Recreated in homage to the films of Peter Jackson.</p>
+    </div>
+  </div>
+
+  <div id="help" class="hidden">
+    <div class="panel wide">
+      <h2>How to walk</h2>
+      <div class="cols">
+        <dl>
+          <dt>W A S D <em>/ arrows</em></dt><dd>Walk</dd>
+          <dt>Shift</dt><dd>Run a little faster</dd>
+          <dt>Mouse <em>/ drag</em></dt><dd>Look around</dd>
+          <dt>Wheel</dt><dd>Adjust your pace</dd>
+        </dl>
+        <dl>
+          <dt>E <em>/ tap Look</em></dt><dd>Look closer at a thing</dd>
+          <dt>M</dt><dd>The map of the Four Farthings</dd>
+          <dt>P</dt><dd>Photo mode &mdash; hide everything</dd>
+          <dt>N</dt><dd>Silence the country</dd>
+          <dt>1 2 3</dt><dd>Detail: low, medium, high</dd>
+          <dt>T</dt><dd>Skip ahead an hour</dd>
+          <dt>H <em>/ Esc</em></dt><dd>Close this</dd>
+        </dl>
+      </div>
+      <p class="credit">On a phone: left thumb to walk, right thumb to look, <b>run</b> to hurry, <b>look</b> to examine.</p>
+    </div>
+  </div>
+
+  <div id="lost" class="hidden"><div class="panel"><h2>The Shire went dark</h2><p class="sub">Your browser lost the graphics context. Reload to return.</p></div></div>
+</div>
+
+<script type="module" src="src/main.js"></script>
+<noscript><p style="color:#f3e9d2;font:16px Georgia,serif;padding:3rem">This walk needs JavaScript and WebGL.</p></noscript>
+</body>
+</html>
