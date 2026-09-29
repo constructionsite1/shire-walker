@@ -15,7 +15,7 @@ import * as THREE from 'three';
 import {
   TAU, clamp, lerp, smoothstep, makeRng, hash2, PALETTE
 } from './constants.js';
-import { landAt, heightAt } from './noise.js';
+import { landAt, heightAt, riverAt } from './noise.js';
 import { renderTexture, plankTexture, windowGlowTexture, drystoneTexture, leafClusterTexture } from './textures.js';
 
 const TAU_ = TAU;
@@ -661,7 +661,7 @@ function fbmLike(x, y) {
 /* ------------------------------------------------------------
    The mill's wheel — the one thing in the Shire that must turn.
    ------------------------------------------------------------ */
-function buildMillWheel(out, field) {
+function buildMillWheel(out, field, mill) {
   const b = new Builder();
   const R = 2.7, W = 1.2, paddles = 16;
   const wood = new THREE.Color(0x8a6537);
@@ -700,11 +700,16 @@ function buildMillWheel(out, field) {
   mesh.castShadow = true;
   mesh.receiveShadow = true;
   const holder = new THREE.Group();
-  const millX = -36, millZ = 48;
-  const r = { x: millX - 7.2, z: millZ + 2.4 };
-  const y = field.height(r.x, r.z) + 2.1;
+  // The wheel stands on the water side of the mill, and its axle sits
+  // where the Water puts it -- a wheel hung off the height of the
+  // ground ends up either buried in the channel or in the air, and
+  // both look like a bug because both are one.
+  const mv = mill || { x: -36, z: 48, rot: 0 };
+  const r = { x: mv.x + Math.cos(mv.rot) * 7.4, z: mv.z - Math.sin(mv.rot) * 7.4 };
+  const riv = riverAt(r.x, r.z);
+  const y = (riv.d < 900 ? riv.level : field.height(r.x, r.z)) + 1.5;
   holder.position.set(r.x, y, r.z);
-  holder.rotation.set(0, -0.5, 0);
+  holder.rotation.set(0, -mv.rot, 0);
   holder.add(mesh);
   out.group.add(holder);
   out.animated.push({ obj: holder, kind: 'wheel' });
@@ -835,7 +840,8 @@ export class Buildings {
     }
 
     // the mill wheel
-    const wheel = buildMillWheel(out, field);
+    const wheel = buildMillWheel(out, field,
+      (plan.holes || []).find(h => h.kind === 'mill'));
 
     // roses: one instanced mesh of leaf cards over the facades
     if (out.roseCards.length) {

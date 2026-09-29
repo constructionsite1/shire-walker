@@ -245,7 +245,10 @@ function flyerSystem(field, opts) {
         float dist = length(xz - uCamXZ);
         float fade = 1.0 - smoothstep(uRadius * 0.45, uRadius, dist);
         float keep = step(aRnd.x, dens * 0.55 + 0.42);
-        vAlpha = fade * keep * step(aRnd.y, uAmount) * smoothstep(0.7, 2.4, dist);
+        // Nothing on a butterfly belongs closer than an arm's length.
+        // Up close its whole wing is one magnified texel and it stops
+        // being a butterfly.
+        vAlpha = fade * keep * step(aRnd.y, uAmount) * smoothstep(2.2, 4.6, dist);
 
         // the beat: wings fold in and out
         float beat = abs(sin(t * uFlap * (0.8 + aRnd.z * 0.5) + ph));

@@ -123,9 +123,9 @@ function mill() {
     id: 'mill',
     x, y, z,
     rot: faceDir(0.9, 0.42),
-    w: 11.5, d: 10.0, wallH: 5.6,
+    w: 11.5, d: 10.0, wallH: 3.6,
     doorCol: 0x8a5a2a, wallHex: 0xe8dcc0,
-    kind: 'mill', doorU: 0.1, windows: 6, gardenDepth: 4.5,
+    kind: 'mill', doorU: 0.1, windows: 4, gardenDepth: 4.5,
     seed: 6060, hedge: false
   }];
 }
