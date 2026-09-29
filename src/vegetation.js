@@ -287,33 +287,51 @@ function tube(path, radii, radial = 5) {
 }
 
 class GeoBuilder {
-  constructor() { this.pos = []; this.nrm = []; this.uv = []; this.col = []; this.idx = []; }
-  get count() { return this.pos.length / 3; }
+  /* Two lists, not one. A tree's bark and its leaves are drawn with
+     different textures and different materials, so keeping them in
+     one geometry means every tree is submitted twice in full --
+     once correctly, and once as bark-textured leaves and
+     leaf-textured branches. Half the forest's triangles were being
+     spent on that, and it is most of the county's triangles. */
+  constructor() {
+    this.wood = { pos: [], nrm: [], uv: [], col: [], idx: [] };
+    this.leaf = { pos: [], nrm: [], uv: [], col: [], idx: [] };
+    this.cur = this.wood;
+  }
+  get count() { return this.cur.pos.length / 3; }
   add(gb, matrix, colour) {
-    const base = this.count;
+    const t = this.cur;
+    const base = t.pos.length / 3;
     const nm = new THREE.Matrix3().getNormalMatrix(matrix);
     const v = new THREE.Vector3();
     for (let i = 0; i < gb.pos.length; i += 3) {
       v.set(gb.pos[i], gb.pos[i + 1], gb.pos[i + 2]).applyMatrix4(matrix);
-      this.pos.push(v.x, v.y, v.z);
+      t.pos.push(v.x, v.y, v.z);
       v.set(gb.nrm[i], gb.nrm[i + 1], gb.nrm[i + 2]).applyMatrix3(nm).normalize();
-      this.nrm.push(v.x, v.y, v.z);
-      this.uv.push(gb.uv[(i / 3) * 2], gb.uv[(i / 3) * 2 + 1]);
+      t.nrm.push(v.x, v.y, v.z);
+      t.uv.push(gb.uv[(i / 3) * 2], gb.uv[(i / 3) * 2 + 1]);
       const c = typeof colour === 'function' ? colour(i / 3) : colour;
-      this.col.push(c.r, c.g, c.b);
+      t.col.push(c.r, c.g, c.b);
     }
-    for (const k of gb.idx) this.idx.push(base + k);
+    for (const k of gb.idx) t.idx.push(base + k);
     return this;
   }
-  build() {
+  _one(t) {
     const g = new THREE.BufferGeometry();
-    g.setAttribute('position', new THREE.Float32BufferAttribute(this.pos, 3));
-    g.setAttribute('normal', new THREE.Float32BufferAttribute(this.nrm, 3));
-    g.setAttribute('uv', new THREE.Float32BufferAttribute(this.uv, 2));
-    g.setAttribute('color', new THREE.Float32BufferAttribute(this.col, 3));
-    g.setIndex(this.idx);
-    g.computeBoundingSphere();
+    g.setAttribute('position', new THREE.Float32BufferAttribute(t.pos, 3));
+    g.setAttribute('normal', new THREE.Float32BufferAttribute(t.nrm, 3));
+    g.setAttribute('uv', new THREE.Float32BufferAttribute(t.uv, 2));
+    g.setAttribute('color', new THREE.Float32BufferAttribute(t.col, 3));
+    g.setIndex(t.idx);
+    g.boundingSphere = new THREE.Sphere(new THREE.Vector3(0, t.pos.length ? t.pos[1] / 2 : 0, 0), 40);
     return g;
+  }
+  build() {
+    // A species with nothing in one list borrows the other, so an
+    // empty geometry can never reach an InstancedMesh.
+    const wood = this.wood.idx.length ? this._one(this.wood) : this._one(this.leaf);
+    const leaf = this.leaf.idx.length ? this._one(this.leaf) : this._one(this.wood);
+    return { wood, leaf };
   }
 }
 
@@ -355,6 +373,8 @@ const CUBE = () => {
    that is what makes it read as a tree rather than a stick. */
 function clump(builder, matrix, size, tint, rng, cards = 3) {
   const hue = new THREE.Color();
+  const was = builder.cur;
+  builder.cur = builder.leaf;
   for (let c = 0; c < cards; c++) {
     // each card gets its own angle on all three axes, and a size of its
     // own: a stand of crossed planes reads as a box, a scatter of
@@ -374,6 +394,7 @@ function clump(builder, matrix, size, tint, rng, cards = 3) {
     hue.copy(tint).multiplyScalar(jitter);
     builder.add(CARD(), m, hue);
   }
+  builder.cur = was;
 }
 
 /* --- species -------------------------------------------------- */
@@ -509,6 +530,8 @@ function pineTree(gb, rng, height, bark, d = 2) {
   gb.add(tube(path, radii, 5), new THREE.Matrix4(), () => bark);
   const dark = new THREE.Color(0x3d6a2f);
   const tiers = d === 0 ? 6 : 8;
+  const wasLeaf = gb.cur;
+  gb.cur = gb.leaf;
   for (let i = 0; i < tiers; i++) {
     const t = i / (tiers - 1);
     const y = height * (0.22 + t * 0.72);
@@ -531,6 +554,7 @@ function pineTree(gb, rng, height, bark, d = 2) {
     gb.add(gbCone, new THREE.Matrix4().multiply(
       new THREE.Matrix4().makeRotationY(rng() * TAU)), () => dark.clone().multiplyScalar(0.7 + rng() * 0.5));
   }
+  gb.cur = wasLeaf;
 }
 
 function bushTree(gb, rng, height, leaf, spread, d = 2) {
@@ -751,9 +775,10 @@ export class Trees {
     for (const [kind, list] of byKind) {
       if (!list.length) continue;
       const spec = SPECIES[kind];
-      const geo = spec.make(makeRng(kind.length * 977 + 13), this.detail);
+      const pair = spec.make(makeRng(kind.length * 977 + 13), this.detail);
       const y0 = this.field.height(list[0].x, list[0].z);
-      geo.translate(0, -y0, 0);   // so the instance matrix can use a plain y
+      pair.wood.translate(0, -y0, 0);   // so the instance matrix can use a plain y
+      pair.leaf.translate(0, -y0, 0);
 
       if (!barkMat.has(kind)) {
         const bt = spec.barkTex();
@@ -790,7 +815,7 @@ export class Trees {
         const inPatch = list.filter(t => patchOf(t.x, t.z) === patch);
         if (!inPatch.length) continue;
         for (const [mat, isLeaf] of [[barkMat.get(kind), false], [leafMat.get(kind), true]]) {
-          const inst = new THREE.InstancedMesh(geo, mat, inPatch.length);
+          const inst = new THREE.InstancedMesh(isLeaf ? pair.leaf : pair.wood, mat, inPatch.length);
           inst.name = `tree-${kind}-${isLeaf ? 'leaf' : 'wood'}-${patch}`;
           inst.castShadow = quality.shadowsTrees && !isLeaf;
           inst.receiveShadow = true;
