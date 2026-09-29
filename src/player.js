@@ -58,11 +58,11 @@ export class Player {
   }
 
   spawn() {
-    // the lane outside Bag End's gate, looking at the door
-    this.position.set(-24, 0, 66);
+    // on the grass by Bag End's gate, looking at the door
+    this.position.set(23.4, 0, 111.9);
     this.groundY = this.field.height(this.position.x, this.position.z);
     this.position.y = this.groundY;
-    this.yaw = Math.atan2(-34 - this.position.x, 56 - this.position.z) + Math.PI;
+    this.yaw = Math.atan2(22 - this.position.x, 104 - this.position.z) + Math.PI;
     this.pitch = -0.02;
   }
 

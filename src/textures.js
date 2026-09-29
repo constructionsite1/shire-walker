@@ -281,14 +281,14 @@ export function renderTexture(hex = '#e6d5b0', seed = 1) {
   return memo('render' + hex + seed, () => {
     const N = 256, c = canvas(N), g = c.getContext('2d');
     const rng = makeRng(9000 + seed * 37);
-    g.fillStyle = GREY(208);
+    g.fillStyle = GREY(238);
     g.fillRect(0, 0, N, N);
     // uneven wash
-    for (let i = 0; i < 160; i++) {
+    for (let i = 0; i < 90; i++) {
       const x = rng() * N, y = rng() * N, r = 18 + rng() * 62;
       const grad = g.createRadialGradient(x, y, 0, x, y, r);
       const dark = rng() > 0.5;
-      grad.addColorStop(0, dark ? 'rgba(118,118,118,0.15)' : 'rgba(255,255,255,0.14)');
+      grad.addColorStop(0, dark ? 'rgba(150,150,150,0.12)' : 'rgba(255,255,255,0.16)');
       grad.addColorStop(1, 'rgba(0,0,0,0)');
       g.fillStyle = grad;
       g.beginPath();
@@ -302,7 +302,7 @@ export function renderTexture(hex = '#e6d5b0', seed = 1) {
       for (let x = 0; x < N; x++) {
         const o = (y * N + x) * 4;
         const n = fbm2(x * 0.06 + seed * 13, y * 0.06, 3) * 0.5 + 0.5;
-        const k = 0.86 + n * 0.28;
+        const k = 0.92 + n * 0.16;
         d[o] *= k; d[o + 1] *= k; d[o + 2] *= k;
       }
     }

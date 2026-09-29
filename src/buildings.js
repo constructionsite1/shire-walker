@@ -225,82 +225,6 @@ function buildHole(h, field, out, rng) {
      1. The mound: a turf hill, matched to the terrain material
         so the grass carries straight over the roof.
      ============================================================ */
-  {
-    const b = new Builder();
-    const US = 24, VS = 18;
-    const rise = 0.30;                 // how much of it is the face of the bank
-    const ridgeH = wallH + w * (isGrand ? 0.24 : isMill ? 0.08 : 0.16);
-    const depth = d * (isGrand ? 1.9 : 1.15);
-    // The mound sits on the ground where the facade stands, and rises
-    // from there. It is a bank, not an object at the origin.
-    const baseY = field.height(h.x, h.z) - 0.4;
-    const rows = [];
-    const col = new THREE.Color(0xffffff);
-    for (let iu = 0; iu <= US; iu++) {
-      const u = (iu / US) * 2 - 1;
-      // how far out this station is from the centre line
-      const halfW = w * 0.5 * Math.pow(Math.max(0, 1 - u * u), 0.26);
-      const row = [];
-      for (let iv = 0; iv <= VS; iv++) {
-        const s = iv / VS;
-        // The mound grows AWAY from the door, into the hill. Local +Z
-        // is out of the door, so this is -Z: get that backwards and the
-        // turf bank is built in front of the house instead of over it.
-        const back = Math.pow(s, 0.9) * depth;
-        let lift;
-        if (s < rise) {
-          lift = ridgeH * smoothstep(0, rise, s);
-        } else {
-          const u2 = (s - rise) / (1 - rise);
-          lift = ridgeH * Math.pow(Math.max(0, 1 - Math.pow(u2, 1.8)), 0.45);
-        }
-        // the mound narrows as it goes back
-        const scale = 1 - 0.30 * (back / depth);
-        const x = u * halfW * scale;
-        // the face of the bank bulges forward in the middle, and the
-        // ridge wanders: a ruled surface reads as a slab, a bulged one
-        // reads as earth
-        const bulge = 1.0 - u * u;
-        const back2 = Math.max(0, back - 0.95 * bulge * (1 - smoothstep(0, rise, s)));
-        // The ridge must wander smoothly. A random value per grid cell
-        // puts a metre-scale step between neighbours, which shreds the
-        // normals — the bank then reads as a slab of flat grey because
-        // every face looks vertical to the shader.
-        const wobble = 0.90
-          + 0.15 * Math.sin(u * 2.4 + (h.seed % 17) * 0.37)
-          + 0.09 * Math.sin(s * 5.1 + u * 1.7 + (h.seed % 11) * 0.23);
-        const wx = h.x + Math.cos(h.rot) * x - Math.sin(h.rot) * back2;
-        const wz = h.z - Math.sin(h.rot) * x - Math.cos(h.rot) * back2;
-        const g0 = field.height(wx, wz);
-        const rough = (fbmLike(x * 0.38, back * 0.30) * 0.34 +
-          fbmLike(x * 1.15 + 40, back * 0.9) * 0.10) * smoothstep(0, 0.4, s);
-        let y = baseY + lift * wobble * (0.6 + 0.4 * bulge) + rough;
-        // tuck the back under the ground it is made of
-        if (s > 0.70) y = lerp(y, g0 - 0.8, smoothstep(0.70, 1.0, s));
-        // and blend the very front into the ground at the doorstep
-        if (s < rise * 0.35) y = lerp(g0 - 0.25, y, smoothstep(0, rise * 0.35, s));
-        row.push([wx, y, wz, x, back, u, s]);
-      }
-      rows.push(row);
-    }
-    for (let iu = 0; iu < US; iu++) {
-      for (let iv = 0; iv < VS; iv++) {
-        const a = rows[iu][iv], b2 = rows[iu + 1][iv], c = rows[iu][iv + 1], d2 = rows[iu + 1][iv + 1];
-        const i0 = b.vert(a[0], a[1], a[2], 0, 1, 0, 0, 0, col);
-        const i1 = b.vert(b2[0], b2[1], b2[2], 0, 1, 0, 1, 0, col);
-        const i2 = b.vert(c[0], c[1], c[2], 0, 1, 0, 0, 1, col);
-        const i3 = b.vert(d2[0], d2[1], d2[2], 0, 1, 0, 1, 1, col);
-        // Wound so the face points at the sky: (u,s) = (u,s) -> (u+1,s)
-        // -> (u+1,s+1) -> (u,s+1), and s runs away from the door. Get
-        // this backwards and every mound in the county is lit from
-        // underneath: a flat grey slab.
-        b.quad(i0, i1, i3, i2);
-      }
-    }
-    const geo = b.build();
-    geo.computeVertexNormals();
-    out.mound.mergeGeo(geo, new THREE.Matrix4());
-  }
 
   /* ============================================================
      2. The facade: a gently curved wall with a heavy brow.
@@ -309,6 +233,9 @@ function buildHole(h, field, out, rng) {
   const doorY = doorR + 0.06;
   const wallR = w * 1.15;
   const halfA = Math.asin(clamp((w * 0.5) / wallR, -0.99, 0.99));
+  // The eaves line: the height of the facade above the garden at the
+  // door. Everything on the front of the house is measured from here.
+  const eavesY = field.height(h.x, h.z) + wallH;
 
   const arcPoint = (a, y) => [
     Math.sin(a) * wallR,
@@ -319,14 +246,19 @@ function buildHole(h, field, out, rng) {
   {
     const b = new Builder();
     const N = Math.max(10, Math.round(w * 1.6));
-    const yTop = wallH;
     const rows = [];
     for (let i = 0; i <= N; i++) {
       const a = -halfA + (i / N) * halfA * 2;
       const g0 = field.height(
         h.x + Math.cos(h.rot) * Math.sin(a) * wallR + Math.sin(h.rot) * (Math.cos(a) * wallR - wallR),
         h.z - Math.sin(h.rot) * Math.sin(a) * wallR + Math.cos(h.rot) * (Math.cos(a) * wallR - wallR));
-      const base = g0 - 1.1;
+      // One eaves line for the whole arc, taken at the door. The turf
+      // bank is ground now, so the wall has to be a retaining face
+      // that the bank presses against — not a band that follows the
+      // mound up and over the roof, which is what sampling the local
+      // height here used to draw.
+      const base = Math.min(g0, eavesY) - 1.1;
+      const yTop = eavesY;
       const row = [];
       // The arc's outward normal, in the wall's own frame: straight
       // out of the door at a = 0, round to +X at a = 90 degrees. This
@@ -536,7 +468,7 @@ function buildHole(h, field, out, rng) {
     const winB = new Builder();
     const frameCol = new THREE.Color(h.doorCol).multiplyScalar(0.6);
     const glassCol = new THREE.Color(0xffffff);
-    const R = isGrand ? 0.46 : 0.40;
+    const R = isGrand ? 0.44 : 0.38;
     const nWin = h.windows;
     for (let k = 0; k < nWin; k++) {
       const u = nWin === 1 ? 0 : (k / (nWin - 1)) * 2 - 1;
@@ -594,7 +526,7 @@ function buildHole(h, field, out, rng) {
         const rb = new Builder();
         ring(rb, v.x, gy, v.z, 0.46, 0.075, 14, 5, new THREE.Color(0x3a2a18), 'z');
         const m3 = new THREE.Matrix4().makeRotationY(h.rot).setPosition(h.x, 0, h.z);
-        out.mound.mergeGeo(rb.build(), new THREE.Matrix4());
+        out.stone.mergeGeo(rb.build(), new THREE.Matrix4());
         void m3;
       }
     }
@@ -611,7 +543,9 @@ function buildHole(h, field, out, rng) {
     const v = new THREE.Vector3(w * (rng() - 0.5) * 0.4, 0, zc).applyMatrix4(m2);
     const g0 = field.height(v.x, v.z);
     const rr = isGrand ? 0.44 : 0.3;
-    const top = g0 + (isGrand ? wallH + w * 0.30 + 1.5 : wallH + w * 0.20 + 1.1);
+    // The house is under the turf; all that should show is the top of
+    // the stack, the way it does over the roof of Bag End.
+    const top = g0 + (isGrand ? 2.4 : 1.8);
     const col = new THREE.Color(0xb08a72);
     cyl(b, v.x, g0 - 1.2, v.z, rr * 1.15, rr, top - g0 + 1.2, 9, null, col, true, 2);
     // a corbelled cap
@@ -689,13 +623,13 @@ function buildHole(h, field, out, rng) {
      ============================================================ */
   {
     const b = new Builder();
-    const N = Math.round(w * 1.1);
+    const N = Math.round(w * 0.42);
     for (let i = 0; i < N; i++) {
-      const u = rng() * 2 - 1;
+      const u = (rng() < 0.5 ? -1 : 1) * (0.42 + rng() * 0.5);
       const a = (u * w * 0.5) / wallR;
       const p = arcPoint(a, 0);
       const y = doorGround + 0.6 + rng() * (wallH - 0.7);
-      const s = 0.5 + rng() * 0.7;
+      const s = 0.34 + rng() * 0.34;
       const mm = new THREE.Matrix4()
         .makeRotationY(rng() * TAU_)
         .premultiply(new THREE.Matrix4().makeRotationZ(rng() * TAU))
@@ -861,7 +795,7 @@ export class Buildings {
     add(out.wood, mats.mWood, true, true, 'timber');
     add(out.stone, mats.mStone, true, true, 'stonework');
     add(out.mount, mats.mStone, true, true, 'stonework-2');
-    if (out.mound.p.length && mats.mMound) {
+    if (false) {
       // the fringe at the foot of the bank sits just under the door sill
       const lowest = out.mound.p.reduce((m, y) => Math.min(m, y), Infinity);
       mats.mMound.userData.shader?.uniforms.uBankBase &&

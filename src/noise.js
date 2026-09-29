@@ -131,8 +131,59 @@ function segDist(ax, az, bx, bz, px, pz) {
   return { d: Math.sqrt(dx * dx + dz * dz), t };
 }
 
-const riverIdx = buildIndex(RIVER, 48);
-const tribIdx = buildIndex(TRIBUTARY, 40);
+/* ------------------------------------------------------------
+   The Water's surface, read off the land it runs through.
+
+   A hand-written table of levels is a trap. This county's ground
+   rolls through fifty metres, so any fixed table leaves the river
+   in a gorge for half its length and stranded on a plateau for the
+   other half — and a mill on a gorge rim has no wheel that reaches
+   the water. Taking each node's level from the ground beneath it
+   keeps the Water in a shallow green valley the whole way. Where
+   the land falls away hard the level steps down, and a step in a
+   river is a weir.
+   ------------------------------------------------------------ */
+function waterLevels(points, drop) {
+  const lv = points.map(p => baseHeight(p[0], p[1]) - drop);
+  for (let pass = 0; pass < 3; pass++) {
+    for (let i = 1; i < lv.length - 1; i++) {
+      lv[i] = (lv[i - 1] + lv[i] * 2 + lv[i + 1]) * 0.25;
+    }
+  }
+  // Smoothing can lift a node above its own ground; the water is
+  // never above the land it runs on.
+  for (let i = 0; i < lv.length; i++) {
+    lv[i] = Math.min(lv[i], baseHeight(points[i][0], points[i][1]) - drop * 0.5);
+  }
+  return lv;
+}
+
+function withWaterLevels(points, drop) {
+  const lv = waterLevels(points, drop);
+  return points.map((p, i) => [p[0], p[1], lv[i], p[3]]);
+}
+
+const riverPts = withWaterLevels(RIVER, 3.2);
+const tribPts = withWaterLevels(TRIBUTARY, 2.6);
+// The tributary has to arrive at the Water at the Water's own level,
+// whatever the ground between the two happens to be doing.
+{
+  const jx = TRIBUTARY[TRIBUTARY.length - 1][0];
+  const jz = TRIBUTARY[TRIBUTARY.length - 1][1];
+  let bi = 0, bd = 1e9;
+  for (let i = 0; i < riverPts.length; i++) {
+    const d = Math.hypot(riverPts[i][0] - jx, riverPts[i][1] - jz);
+    if (d < bd) { bd = d; bi = i; }
+  }
+  const mouth = riverPts[bi][2];
+  for (let i = 0; i < tribPts.length; i++) {
+    const t = i / (tribPts.length - 1);
+    tribPts[i][2] = lerp(tribPts[i][2], mouth, t * t);
+  }
+}
+
+const riverIdx = buildIndex(riverPts, 48);
+const tribIdx = buildIndex(tribPts, 40);
 const roadIdx = buildIndex(ROAD, 48);
 /* One index per lane. Flattening them into a single polyline looks
    tidy and is badly wrong: it joins the last point of one lane to
@@ -178,14 +229,20 @@ export function riverAt(x, z) {
   return best;
 }
 
-/** Distance to the nearest road centre (and to any lane). */
-export function roadAt(x, z) {
+/** Distance to the Great West Road itself — the wide one. */
+export function roadOnly(x, z) {
   let best = 1e9;
   for (const s of roadIdx.query(x, z)) {
     const a = roadIdx.points[s], b = roadIdx.points[s + 1];
     const r = segDist(a[0], a[1], b[0], b[1], x, z);
     if (r.d < best) best = r.d;
   }
+  return best;
+}
+
+/** Distance to the nearest footpath or lane — the narrow one. */
+export function laneAt(x, z) {
+  let best = 1e9;
   for (const idx of laneIdxs) {
     for (const s of idx.query(x, z)) {
       const a = idx.points[s], b = idx.points[s + 1];
@@ -194,6 +251,22 @@ export function roadAt(x, z) {
     }
   }
   return best;
+}
+
+/**
+ * How much of this spot is trodden bare. The Great West Road takes a
+ * cart; a lane between a gate and a field takes a hobbit. Give them
+ * one width between them and the lanes come out as broad as the road
+ * and every garden in the county turns into a parade ground.
+ */
+export function trackAt(x, z) {
+  return Math.max(1 - smoothstep(2.1, 3.9, roadAt(x, z)),
+                  1 - smoothstep(0.8, 1.9, laneAt(x, z)));
+}
+
+/** Distance to the nearest road centre (and to any lane). */
+export function roadAt(x, z) {
+  return Math.min(roadOnly(x, z), laneAt(x, z));
 }
 
 /** How much of a crop field covers this point, 0..1. */
@@ -236,27 +309,127 @@ export function baseHeight(x, z) {
   return h;
 }
 
-/** Terrain height with rivers carved. This is the ground truth. */
+/* ------------------------------------------------------------
+   The banks of the hobbit holes.
+
+   A turf bank is not an object sitting on the ground — it is
+   ground. Folding it into the height field means the grass grows
+   up its face, the player's feet find it, the field texture
+   carries it, and the facade's own material has nothing to seam
+   against. It is also about a hundredth of the geometry.
+   ------------------------------------------------------------ */
+const BANKS = [];
+let bankGrid = null;
+
+export function setBanks(list) {
+  BANKS.length = 0;
+  for (const b of list) BANKS.push(b);
+  bankGrid = null;
+  if (!BANKS.length) return;
+  const cell = 48;
+  const map = new Map();
+  for (let i = 0; i < BANKS.length; i++) {
+    const b = BANKS[i];
+    const r = Math.max(b.w, b.depth) * 0.8 + 3;
+    const i0 = clamp(Math.floor((b.x - r + 400) / cell), 0, 40);
+    const i1 = clamp(Math.floor((b.x + r + 400) / cell), 0, 40);
+    const j0 = clamp(Math.floor((b.z - r + 400) / cell), 0, 40);
+    const j1 = clamp(Math.floor((b.z + r + 400) / cell), 0, 40);
+    for (let j = j0; j <= j1; j++) {
+      for (let k = i0; k <= i1; k++) {
+        const key = j * 64 + k;
+        let a = map.get(key);
+        if (!a) { a = []; map.set(key, a); }
+        a.push(i);
+      }
+    }
+  }
+  bankGrid = { cell, map };
+}
+
+/** How much turf stands on the bare ground at this point. */
+function bankAt(x, z) {
+  if (!bankGrid) return 0;
+  const gx = clamp(Math.floor((x + 400) / bankGrid.cell), 0, 40);
+  const gz = clamp(Math.floor((z + 400) / bankGrid.cell), 0, 40);
+  const list = bankGrid.map.get(gz * 64 + gx);
+  if (!list) return 0;
+  let best = 0;
+  const ground = baseHeight(x, z);
+  for (const i of list) {
+    const b = BANKS[i];
+    const c = Math.cos(b.rot), s = Math.sin(b.rot);
+    const dx = x - b.x, dz = z - b.z;
+    const lx = c * dx - s * dz;
+    let back = -(s * dx + c * dz);
+    if (back < -1.5 || Math.abs(lx) > b.w * 0.62) continue;
+    // The face bulges forward in the middle, so solve for it: the
+    // turf at a given ground distance sits that much nearer the
+    // door. `back` and `cut` are both in metres — normalise only
+    // once, or the whole bank collapses onto its own back edge.
+    let t = clamp(back / b.depth, 0, 1);
+    for (let k = 0; k < 2; k++) {
+      const sn = Math.pow(t, 1 / 0.9);
+      const bulge = Math.max(0, 1 - (lx / (b.w * 0.5)) ** 2);
+      const cut = 0.95 * bulge * (1 - smoothstep(0, b.rise, sn));
+      const back2 = Math.max(0, back - cut / b.depth) / b.depth;
+      t = clamp(Math.pow(back2, 0.9), 0, 1);
+    }
+    const sn = t;
+    const scale = 1 - 0.30 * t;
+    const halfW = Math.max(0.4, b.w * 0.5 * scale * Math.pow(Math.max(0, 1 - (lx / (b.w * 0.5)) ** 2), 0.26));
+    if (Math.abs(lx) > halfW) continue;
+    const bulge2 = Math.max(0, 1 - (lx / (b.w * 0.5)) ** 2);
+    // The turf line: nothing at all in front of the door, where the
+    // facade is a retaining wall, then a cut-and-fill bank up behind
+    // it and a long roll over the roof. The face gets the same slope
+    // whatever the house is — forty degrees, which is what a bank
+    // someone dug and planted actually is, and gentle enough that
+    // the ground shader still calls it turf.
+    const face = b.ridgeH * 1.15;
+    let lift;
+    if (back <= 0) lift = 0;
+    else if (back < face) lift = b.ridgeH * smoothstep(0, 1, back / face);
+    else lift = b.ridgeH * Math.pow(1 - smoothstep(0, 1, (back - face) / (b.depth - face)), 0.85);
+    const wobble = 0.90
+      + 0.15 * Math.sin((lx / Math.max(halfW, 0.01)) * 2.4 + (b.seed % 17) * 0.37)
+      + 0.09 * Math.sin(sn * 5.1 + (lx / Math.max(halfW, 0.01)) * 1.7 + (b.seed % 11) * 0.23);
+    let y = b.baseY + lift * wobble * (0.6 + 0.4 * bulge2);
+    y += (noise2(lx * 0.38, back * 0.30) * 0.34 + noise2(lx * 1.15 + 40, back * 0.9) * 0.10)
+      * smoothstep(0, 0.4, sn);
+    // Where the natural ground is already as high as the bank there
+    // is nothing to add; where it is lower, this is the earth the
+    // hole is dug into. `best` taking the maximum means overlapping
+    // banks join instead of cutting holes in one another.
+    const add = y - ground;
+    if (add > best) best = add;
+  }
+  return best;
+}
+
+/** Terrain height with rivers, roads and the hobbit-hole banks. */
 export function heightAt(x, z) {
   let h = baseHeight(x, z);
   const r = riverAt(x, z);
-  if (r.d < r.width * 4.2) {
-    // Flatten the floodplain, then cut the channel.
-    const flat = smoothstep(r.width * 4.2, r.width * 1.15, r.d);
-    const bank = r.level + 0.55;
-    h = lerp(h, Math.min(h, bank + (h - bank) * flat * 0.55 + 0.9), flat);
+  if (r.d < r.width * 3.0) {
+    // Ease the ground down to the water over a couple of widths — a
+    // bank you could walk a cow down — then cut the channel itself.
+    // Reach much further than this and the Water stops being a river
+    // and becomes a lake with hedges round it.
+    const flat = smoothstep(r.width * 2.8, r.width * 1.05, r.d);
+    const bank = r.level + 0.95;
+    h = lerp(h, Math.min(h, bank + (h - bank) * flat * 0.55 + 0.55), flat);
     const bed = r.level - 1.5 - 0.9 * smoothstep(0, r.width, r.d);
     h = lerp(h, Math.min(h, bed), 1 - smoothstep(r.width * 0.72, r.width * 1.5, r.d));
-    h += (1 - flat) * 0;
   }
-  // Roads sit in a shallow cut and are otherwise level.
-  const rd = roadAt(x, z);
-  if (rd < 9) {
-    const w = 1 - smoothstep(3.4, 8.6, rd);
+  // Roads and lanes sit in a shallow cut and are otherwise level.
+  const tr = trackAt(x, z);
+  if (tr > 0.001) {
     const target = baseHeight(x, z) - 0.28;
-    h = lerp(h, Math.min(h, target) * w + h * (1 - w), w * 0.85);
+    h = lerp(h, Math.min(h, target) * tr + h * (1 - tr), tr * 0.85);
   }
-  return h;
+  // and the turf bank of a hobbit hole stands on top of all that
+  return h + bankAt(x, z);
 }
 
 /** Surface normal via central differences. */
@@ -281,7 +454,8 @@ export function slopeAt(x, z, eps = 1.4) {
 export function landAt(x, z) {
   const r = riverAt(x, z);
   const h = heightAt(x, z);
-  const road = 1 - smoothstep(1.9, 4.4, roadAt(x, z));
+  // A cart road is a cart road wide, and a lane is a lane wide.
+  const road = trackAt(x, z);
   // crops keep clear of the river's bank, and of the roads
   const crop = fieldAt(x, z) * (1 - road) * smoothstep(r.width * 0.9, r.width * 2.6, r.d);
   const shore = 1 - smoothstep(r.width * 0.86, r.width * 2.1, r.d);

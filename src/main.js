@@ -10,7 +10,7 @@ import {
   QUALITY, WORLD, DAY_SECONDS, TIME_PRESETS, PLACES, EYE_HEIGHT,
   clamp, lerp, smoothstep, TAU
 } from './constants.js';
-import { Field, riverAt, roadAt, heightAt } from './noise.js';
+import { Field, riverAt, roadAt, heightAt, setBanks } from './noise.js';
 import { Sky } from './sky.js';
 import { Terrain } from './terrain.js';
 import { Water } from './water.js';
@@ -135,6 +135,11 @@ class Shire {
     /* --- the land ------------------------------------------------ */
     ui.progress(0.12, 'raising the county…');
     await frame();
+    // The plan comes first: it owns the turf banks over the hobbit
+    // holes, and those have to be part of the ground before the
+    // ground is baked. Otherwise the grass never grows up Bag End.
+    this.plan = buildPlan();
+    setBanks(this.plan.banks);
     this.field = new Field(this.quality.dataRes);
     await this._bake();
 
@@ -149,11 +154,7 @@ class Shire {
     this.scene.add(this.water.group);
 
     /* --- the county ---------------------------------------------- */
-    ui.progress(0.5, 'planning the villages…');
-    await frame();
-    this.plan = buildPlan(this.field);
-
-    ui.progress(0.56, 'cutting the doors…');
+    ui.progress(0.5, 'building the front doors…');
     await frame();
     this.buildings = new Buildings(this.field, this.plan, this.terrain, this.quality);
     this.scene.add(this.buildings.group);

@@ -10,7 +10,7 @@ import * as THREE from 'three';
 import {
   PLACES, DOOR_COLOURS, WORLD, TAU, clamp, lerp, smoothstep, makeRng, hash2
 } from './constants.js';
-import { riverAt, roadAt, heightAt, landAt } from './noise.js';
+import { riverAt, roadAt, heightAt, landAt, setBanks } from './noise.js';
 
 /* Which way a facade looks, in radians (0 = +Z / south). */
 const faceDir = (dx, dz) => Math.atan2(dx, dz);
@@ -19,7 +19,7 @@ const faceDir = (dx, dz) => Math.atan2(dx, dz);
  * A row of hobbit-holes along a lane, alternating hillside and
  * semi-detached, the way the films stagger them.
  */
-function layOutVillage(field, opts) {
+function layOutVillage(opts) {
   const {
     centre, count, seed, spread, arc, gap,
     wallHexes, doorStart, minH, maxH, depthBias
@@ -37,7 +37,7 @@ function layOutVillage(field, opts) {
     const facing = opts.rot + Math.PI * 0.5 + side * 0.0 + (rng() - 0.5) * 0.5;
     const w = lerp(minH, maxH, rng());
     const d = w * lerp(0.72, 0.94, rng()) * (1 + depthBias * 0.1);
-    const y = field.height(x, z);
+    const y = heightAt(x, z);
     holes.push({
       x, y, z,
       rot: facing,
@@ -57,17 +57,21 @@ function layOutVillage(field, opts) {
 }
 
 /* Bag End: big, round-doored, green, in the flank of the Hill. */
-function bagEnd(field) {
-  const x = -34, z = 56;
-  const y = field.height(x, z);
+function bagEnd() {
+  // On the Hill with the rest of Hobbiton, on the shoulder where the
+  // ground still rises behind: the bank needs a hillside to be the
+  // bank of a hill, and the Water has to be somewhere over there to
+  // look at, not under the doorstep.
+  const x = 22, z = 104;
+  const y = heightAt(x, z);
   return {
     id: 'bagend',
     x, y, z,
-    rot: faceDir(0.34, 0.94),       // the door looks south-west, down the lane
-    w: 15.5, d: 12.5,
-    wallH: 3.1,
+    rot: faceDir(0.52, 0.85),        // the door looks down the slope, south
+    w: 17.0, d: 13.0,
+    wallH: 2.2,
     doorCol: 0x3f7a2a,
-    wallHex: 0xe0d0ac,
+    wallHex: 0xf6e6c4,
     kind: 'grand',
     doorU: -0.06,
     windows: 5,
@@ -78,9 +82,9 @@ function bagEnd(field) {
 }
 
 /* The Green Dragon: wider, lower, green door, warm and busy. */
-function greenDragon(field) {
+function greenDragon() {
   const x = -96, z = 116;
-  const y = field.height(x, z);
+  const y = heightAt(x, z);
   const g = {
     id: 'dragon',
     x, y, z,
@@ -88,7 +92,7 @@ function greenDragon(field) {
     w: 17.5, d: 13.5,
     wallH: 3.0,
     doorCol: 0x2f6f4a,
-    wallHex: 0xd8c6a0,
+    wallHex: 0xf0dcb4,
     kind: 'inn',
     doorU: -0.18,
     windows: 5,
@@ -102,22 +106,25 @@ function greenDragon(field) {
     x: x + Math.cos(g.rot - 1.9) * 12.5, y, z: z + Math.sin(g.rot - 1.9) * 12.5,
     rot: g.rot - 0.5,
     w: 8.5, d: 7.5, wallH: 2.4,
-    doorCol: 0x2f6f4a, wallHex: 0xd0be98, kind: 'semi', doorU: 0,
+    doorCol: 0x2f6f4a, wallHex: 0xead6ae, kind: 'semi', doorU: 0,
     windows: 2, gardenDepth: 3.5, seed: 8124, hedge: false
   };
   return [g, wing];
 }
 
 /* The Mill: two storeys of cob, a big wheel, sacks in the yard. */
-function mill(field) {
-  const x = -36, z = 48;
-  const y = field.height(x, z);
+function mill() {
+  // Close enough to the channel that the wheel turns in it, and no
+  // closer: the bank of the Water is a cliff, and a mill whose floor
+  // stands in the river is a mill nobody could work.
+  const x = -38, z = 50;
+  const y = heightAt(x, z);
   return [{
     id: 'mill',
     x, y, z,
     rot: faceDir(0.9, 0.42),
     w: 11.5, d: 10.0, wallH: 5.6,
-    doorCol: 0x8a5a2a, wallHex: 0xd2c3a4,
+    doorCol: 0x8a5a2a, wallHex: 0xe8dcc0,
     kind: 'mill', doorU: 0.1, windows: 6, gardenDepth: 4.5,
     seed: 6060, hedge: false
   }];
@@ -198,10 +205,10 @@ function fieldBoundaries() {
 }
 
 /* The Party Tree: a great spreading oak, hung with lanterns. */
-function partyTree(field) {
+function partyTree() {
   const x = 2, z = 22;
   return {
-    x, z, y: field.height(x, z),
+    x, z, y: heightAt(x, z),
     rot: 0.4,
     s: 2.35,             // considerably larger than any other tree
     kind: 'oak',
@@ -210,42 +217,42 @@ function partyTree(field) {
 }
 
 /* Sam's rowan, by Bag End's gate. */
-function rowanTree(field) {
-  const x = -24, z = 68;
-  return { x, z, y: field.height(x, z), rot: 1.1, s: 0.78, kind: 'rowan', lanterns: false };
+function rowanTree() {
+  const x = 31, z = 110;
+  return { x, z, y: heightAt(x, z), rot: 1.1, s: 0.78, kind: 'rowan', lanterns: false };
 }
 
-export function buildPlan(field) {
-  const hobbiton = layOutVillage(field, {
+export function buildPlan() {
+  const hobbiton = layOutVillage({
     centre: { x: 62, z: 104 }, count: 14, seed: 11,
     spread: 62, arc: 9, gap: 5, rot: 0.42,
-    wallHexes: [0xe6d5b0, 0xdcc9a4, 0xe8dcc0, 0xd2b98e, 0xd9c8a6, 0xe0d0ac],
+    wallHexes: [0xfae8c6, 0xf2dcb8, 0xfdf1d8, 0xeccfa4, 0xf6e0bc, 0xf7ead0],
     doorStart: 0, minH: 7.0, maxH: 10.5, depthBias: 0
   });
-  const bywater = layOutVillage(field, {
+  const bywater = layOutVillage({
     centre: { x: 108, z: 26 }, count: 8, seed: 27,
     spread: 34, arc: 5, gap: 4, rot: -0.7,
-    wallHexes: [0xdfcda8, 0xd6c39c, 0xe4d3ae, 0xcdb890],
+    wallHexes: [0xeddcb8, 0xe6d2ae, 0xf2e4c2, 0xdfc99e],
     doorStart: 5, minH: 6.4, maxH: 8.6, depthBias: 0
   });
-  const dragontail = layOutVillage(field, {
+  const dragontail = layOutVillage({
     centre: { x: -128, z: 78 }, count: 4, seed: 33,
     spread: 22, arc: 3, gap: 4, rot: 1.4,
-    wallHexes: [0xd8c6a0, 0xcfc09a],
+    wallHexes: [0xe8d6b0, 0xdfcfa8],
     doorStart: 9, minH: 6.0, maxH: 7.4, depthBias: 0
   });
 
   const holes = [
-    bagEnd(field),
-    ...greenDragon(field),
-    ...mill(field),
+    bagEnd(),
+    ...greenDragon(),
+    ...mill(),
     ...hobbiton, ...bywater, ...dragontail
   ];
 
   const walls = fieldBoundaries();
-  const orch = orchard(field);
-  const pTree = partyTree(field);
-  const rowan = rowanTree(field);
+  const orch = orchard();
+  const pTree = partyTree();
+  const rowan = rowanTree();
 
   /* ----------------------------------------------------------------
      Keep-off discs. Anything that plants or props must not sit in
@@ -291,9 +298,44 @@ export function buildPlan(field) {
 
   return {
     holes, walls, orchard: orch, partyTree: pTree, rowan,
-    bridge: bridge(), exclusions, inExclusion,
+    bridge: bridge(), exclusions, inExclusion, banks: bankShapes(holes),
     place: (id) => PLACES.find(p => p.id === id)
   };
+}
+
+/**
+ * The turf bank over each hole, as the height field wants it. The
+ * films put a garden and a good deal of earth over the house, and
+ * the bank is what you walk up to knock.
+ *
+ * The bank is sized from the house, not guessed: its crest has to
+ * clear the ridge of the roof (which the facade builder puts at
+ * `wallH + w * 0.20 + 1.1` above the door, more for Bag End), and
+ * it has to run far enough behind the house to fall away in a
+ * green shoulder rather than stop at the back wall.
+ */
+function bankShapes(holes) {
+  const out = [];
+  for (const h of holes) {
+    const isGrand = h.kind === 'grand';
+    const isMill = h.kind === 'mill';
+    const w = h.w;
+    const d = h.d;
+    out.push({
+      x: h.x, z: h.z, rot: h.rot, seed: h.seed | 0,
+      w,
+      // long enough behind the house for the bank to lie down again
+      depth: Math.max(d * (isGrand ? 2.1 : 1.9),
+                      (h.wallH + (isGrand ? 3.0 : 2.2)) * 2.4),
+      rise: 0.17,
+      // The bank only has to clear the facade by a good margin: the
+      // house is under the turf, and the whole point of a hobbit hole
+      // is that the grass is higher than the bricks.
+      ridgeH: h.wallH + (isGrand ? 3.0 : isMill ? 0.6 : 2.2),
+      baseY: heightAt(h.x, h.z) - 0.4
+    });
+  }
+  return out;
 }
 
 /* ------------------------------------------------------------

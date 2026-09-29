@@ -111,21 +111,24 @@ export const TRIBUTARY = [
   [68, 30, 1.7, 3.2]
 ];
 
-/* The Great West Road — a pale dirt track, SW to NE. */
+/* The Great West Road — a pale dirt track, SW to NE. It keeps clear
+   of Bag End's garden: a road that runs through the front of the
+   house is a road, but it is not the one in the films. */
 export const ROAD = [
   [-372, 232], [-318, 216], [-262, 198], [-206, 182], [-152, 168],
-  [-104, 156], [-58, 142], [-14, 126], [24, 112], [56, 100],
-  [88, 88], [124, 72], [162, 50], [204, 24], [248, -8],
-  [292, -46], [334, -92], [372, -146]
+  [-104, 158], [-58, 146], [-14, 132], [14, 124], [40, 114],
+  [72, 102], [104, 90], [140, 74], [180, 50], [220, 22],
+  [262, -12], [304, -48], [344, -92], [372, -146]
 ];
 
 /* Lanes: narrower, and only where feet would actually go. */
 export const LANES = [
-  [[24, 112], [8, 96], [-8, 82], [-22, 70], [-32, 58]],           // to Bag End's gate
-  [[-58, 142], [-74, 132], [-86, 124], [-96, 116]],                  // to the Green Dragon
-  [[-32, 44], [-38, 54], [-44, 66], [-46, 80]],                      // mill to the fields
+  [[-14, 132], [4, 126], [18, 119], [27, 114]],                     // down to Bag End's gate
+  [[27, 114], [24, 121], [18, 125], [12, 117], [8, 101], [4, 80], [2, 60], [2, 44]],  // gate to the Party Field
+  [[-58, 146], [-74, 136], [-86, 126], [-96, 116]],                   // to the Green Dragon
+  [[-38, 50], [-42, 60], [-46, 72], [-48, 84]],                       // mill to the fields
   [[95, 8], [104, 20], [112, 34], [116, 50]],                        // Bywater lane
-  [[40, 58], [58, 74], [74, 88], [88, 100]]                          // Hobbiton lane
+  [[40, 58], [58, 74], [74, 88], [88, 100]]                           // Hobbiton lane
 ];
 
 /* The Hill: a broad, gentle knoll, the Shire's high point. */
@@ -153,7 +156,7 @@ export const RIDGES = [
 
 /* Landmarks. x/z are world metres; `r` is the discovery radius. */
 export const PLACES = [
-  { id: 'bagend',   name: 'Bag End',           sub: 'of Bagshot Row',            x: -34,  z: 56,  r: 30 },
+  { id: 'bagend',   name: 'Bag End',           sub: 'of Bagshot Row',            x: 22,   z: 104, r: 30 },
   { id: 'hill',     name: 'The Hill',          sub: 'and the Party Field below',  x: 6,    z: 60,  r: 34 },
   { id: 'partytree',name: 'The Party Tree',    sub: 'where a hundred lanterns hang', x: 2,  z: 22,  r: 24 },
   { id: 'partyfield', name: 'The Party Field', sub: 'where the fireworks went up', x: 2,  z: 44,  r: 30 },

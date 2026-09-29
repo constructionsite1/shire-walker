@@ -55,10 +55,10 @@ function bladeGeometry() {
   const pos = [], nrm = [], uv = [], idx = [];
   for (let r = 0; r < rows; r++) {
     const v = r / (rows - 1);
-    const w = Math.pow(1 - v, 0.72) * 0.5;
+    const w = Math.pow(1 - v, 0.95) * 0.5;
     for (let c = 0; c < cols; c++) {
       const x = (c === 0 ? -1 : 1) * w;
-      pos.push(x, v, v * v * 0.13);
+      pos.push(x, v, v * v * 0.2);
       nrm.push(0, 0, 1);
       uv.push(c, v);
     }
@@ -188,8 +188,8 @@ export class Grass {
             // blades have to be a shade lighter and warmer than the
             // ground under them or they vanish into it.
             float _patch = texture2D(uField, _uv * 3.1 + vec2(0.37, 0.61)).g;
-            vec3 _lo = vec3(0.20, 0.30, 0.115);
-            vec3 _hi = vec3(0.44, 0.57, 0.215);
+            vec3 _lo = vec3(0.19, 0.26, 0.115);
+            vec3 _hi = vec3(0.40, 0.50, 0.225);
             vec3 _col = mix(_lo, _hi, _dens * 0.5 + _patch * 0.5);
             _col *= 0.80 + 0.48 * aRand.y;
             vTip = pow(position.y, 1.3);
