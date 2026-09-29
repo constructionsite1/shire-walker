@@ -31,6 +31,7 @@ const SPLAT_PARS = /* glsl */`
   uniform float uTime;
   uniform float uWetness;
   uniform float uRock;
+  uniform float uBankBase;
   uniform vec3  uHaze;
   varying vec3  vWPos;
   varying vec3  vWNrm;
@@ -85,14 +86,16 @@ const FRAG_BODY = /* glsl */`
   float slope = steepness;
 
   // --- detail normal, from the tiling noise map ------------------
-  vec2 duv = Puv * 0.42;
+  // On a face, use the face's own plane and a tighter scale, or the
+  // bump vanishes exactly where the surface is most conspicuous.
+  vec2 duv = mix(P, Pwall, wBlend) * mix(0.42, 0.85, wBlend);
   float b0 = texture2D(uDetail, duv).g;
   float bx = texture2D(uDetail, duv + vec2(0.011, 0.0)).g;
   float bz = texture2D(uDetail, duv + vec2(0.0, 0.011)).g;
   vec3 up = abs(WN.y) > 0.985 ? vec3(1.0, 0.0, 0.0) : vec3(0.0, 0.0, 1.0);
   vec3 T = normalize(cross(up, WN));
   vec3 B = cross(WN, T);
-  float bumpAmt = 1.35 * (1.0 - smoothstep(0.05, 0.42, slope));
+  float bumpAmt = 1.35 * mix(1.0 - smoothstep(0.05, 0.42, slope), 0.85, wBlend);
   vec3 Nw = normalize(WN - (T * (bx - b0) + B * (bz - b0)) * bumpAmt);
 
   // --- turf layers ------------------------------------------------
@@ -105,12 +108,15 @@ const FRAG_BODY = /* glsl */`
   float fine  = fbm3(Puv * 0.085);
   vec3 grass = mix(turfA, turfB, 0.40 + 0.22 * (meso * 0.5 + 0.5));
   grass = mix(grass, turfC, 0.28);
-  grass = mix(grass, turfD, 0.16 * (0.5 + 0.5 * fine));
+  grass = mix(grass, turfD, mix(0.16, 0.36, wBlend) * (0.5 + 0.5 * fine));
   // sun-bleached ridges vs damp hollows, gently
   grass *= mix(vec3(1.09, 1.06, 0.86), vec3(0.84, 0.94, 0.80),
                clamp(gh / 70.0 + macro * 0.25, 0.0, 1.0));
   // and a last break-up so a big flat field is never one flat value
   grass *= 0.90 + 0.20 * fine;
+  // a bank seen face-on has to carry its own detail, or it reads as a
+  // slab of one colour with a hard edge
+  grass *= mix(1.0, 0.82 + 0.36 * fbm3(Pwall * 0.21), wBlend);
 
   // meadow flowers, only in the good grass
   float fl = texture2D(uTurb, Puv * 0.27 + vec2(0.37, 0.11)).r;
@@ -182,6 +188,32 @@ function makeDataTex(data, res) {
   return t;
 }
 
+/* ------------------------------------------------------------
+   The bank: what a hobbit hole's roof is made of. Grass, and
+   nothing else — no road, no crop, no mud, no haze. Cheap, and
+   immune to the field masks bleeding onto a surface they have no
+   business being on.
+   ------------------------------------------------------------ */
+const BANK_BODY = /* glsl */`
+  vec3 WN = normalize(vWNrm);
+  float steep = clamp(1.0 - WN.y, 0.0, 1.0);
+  vec2 Pwall = vec2(vWPos.x + vWPos.z, vWPos.y);
+  float wb = smoothstep(0.26, 0.66, steep);
+  vec2 Puv = mix(vWPos.xz, Pwall, wb);
+
+  vec3 turfA = texture2D(uTurb, Puv * 0.014).rgb;
+  vec3 turfB = texture2D(uTurb, Puv * 0.075).rgb;
+  vec3 turfC = texture2D(uTurb, Puv * 0.34).rgb;
+  vec3 col = mix(turfA, turfB, 0.46);
+  col = mix(col, turfC, 0.32);
+  // sun on the crown, a shade deeper down the face
+  col *= mix(1.10, 0.88, wb);
+  col *= 0.88 + 0.26 * fbm3(Puv * 0.11);
+  // a darker fringe where the turf meets the doorstep
+  col *= 0.82 + 0.18 * smoothstep(0.0, 2.0, vWPos.y - uBankBase);
+  diffuseColor.rgb *= col;
+`;
+
 export class Terrain {
   constructor(field, quality) {
     this.field = field;
@@ -214,8 +246,13 @@ export class Terrain {
    * The ground shader. The mounds that roof the hobbit holes use the
    * same one, so the turf runs straight over the top of Bag End with
    * no seam — only the baked occlusion is left off for them.
+   *
+   * `bank: true` gives a short, dedicated version instead: a hobbit
+   * hole's roof is a bank of grass and nothing else. It has no road on
+   * it, no crop, no mud and no haze, so none of that logic — and none
+   * of the ways the field masks can bleed onto it — applies.
    */
-  splatMaterial({ ao = true, rock = 1, name = 'shire-splat' } = {}) {
+  splatMaterial({ ao = true, rock = 1, bank = false, name = 'shire-splat' } = {}) {
     // Lambert, not Standard. The ground is the largest surface in the
     // scene and it has no business having a specular highlight: a sun
     // glinting off a hillside at grazing incidence blows out a white
@@ -234,6 +271,7 @@ export class Terrain {
       uTime: { value: 0 },
       uWetness: { value: 1 },
       uRock: { value: rock },
+      uBankBase: { value: 0 },
       uHaze: { value: this.haze }
     };
     mat.onBeforeCompile = (shader) => {
@@ -243,8 +281,9 @@ export class Terrain {
         .replace('#include <fog_vertex>', VERT_BODY + '\n#include <fog_vertex>');
       shader.fragmentShader = shader.fragmentShader
         .replace('#include <common>', '#include <common>\n' + FRAG_PARS)
-        .replace('#include <map_fragment>', '#include <map_fragment>\n' + FRAG_BODY);
-      if (ao) {
+        .replace('#include <map_fragment>',
+          '#include <map_fragment>\n' + (bank ? BANK_BODY : FRAG_BODY));
+      if (ao && !bank) {
         shader.fragmentShader = shader.fragmentShader.replace('#include <aomap_fragment>',
           `#include <aomap_fragment>
            float _in = step(max(abs(vWPos.x), abs(vWPos.z)), uSpan - 1.0);

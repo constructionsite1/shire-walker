@@ -134,11 +134,11 @@ function segDist(ax, az, bx, bz, px, pz) {
 const riverIdx = buildIndex(RIVER, 48);
 const tribIdx = buildIndex(TRIBUTARY, 40);
 const roadIdx = buildIndex(ROAD, 48);
-
-/* All lanes flattened into one index so the hot path stays a lookup. */
-const LANE_PTS = [];
-for (const lane of LANES) for (const p of lane) LANE_PTS.push([p[0], p[1]]);
-const laneIdx = buildIndex(LANE_PTS, 40);
+/* One index per lane. Flattening them into a single polyline looks
+   tidy and is badly wrong: it joins the last point of one lane to
+   the first point of the next, and the county ends up with three
+   roads running across it that nobody drew. */
+const laneIdxs = LANES.map(lane => buildIndex(lane, 40));
 
 /* Ribbon width and surface level at a point along a river index. */
 function riverSample(idx, seg, t) {
@@ -186,10 +186,12 @@ export function roadAt(x, z) {
     const r = segDist(a[0], a[1], b[0], b[1], x, z);
     if (r.d < best) best = r.d;
   }
-  for (const s of laneIdx.query(x, z)) {
-    const a = laneIdx.points[s], b = laneIdx.points[s + 1];
-    const r = segDist(a[0], a[1], b[0], b[1], x, z);
-    if (r.d < best) best = r.d;
+  for (const idx of laneIdxs) {
+    for (const s of idx.query(x, z)) {
+      const a = idx.points[s], b = idx.points[s + 1];
+      const r = segDist(a[0], a[1], b[0], b[1], x, z);
+      if (r.d < best) best = r.d;
+    }
   }
   return best;
 }

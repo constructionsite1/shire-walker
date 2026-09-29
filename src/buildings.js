@@ -194,7 +194,7 @@ function makeMaterials(terrain) {
   const mGlow = new THREE.MeshBasicMaterial({
     map: windowGlowTexture(), color: 0xffffff, toneMapped: false, side: THREE.DoubleSide
   });
-  const mMound = terrain ? terrain.splatMaterial({ ao: false, rock: 0, name: 'shire-mound' }) : null;
+  const mMound = terrain ? terrain.splatMaterial({ ao: false, bank: true, name: 'shire-mound' }) : null;
   return { mWall, mWood, mPaint, mStone, mBrass, mGlow, mMound };
 }
 
@@ -227,40 +227,59 @@ function buildHole(h, field, out, rng) {
      ============================================================ */
   {
     const b = new Builder();
-    const US = 22, VS = 16;
-    const front = 0.14;
-    const ridgeH = wallH + w * (isGrand ? 0.30 : isMill ? 0.10 : 0.20);
+    const US = 24, VS = 18;
+    const rise = 0.30;                 // how much of it is the face of the bank
+    const ridgeH = wallH + w * (isGrand ? 0.24 : isMill ? 0.08 : 0.16);
     const depth = d * (isGrand ? 1.9 : 1.15);
+    // The mound sits on the ground where the facade stands, and rises
+    // from there. It is a bank, not an object at the origin.
+    const baseY = field.height(h.x, h.z) - 0.4;
     const rows = [];
     const col = new THREE.Color(0xffffff);
     for (let iu = 0; iu <= US; iu++) {
       const u = (iu / US) * 2 - 1;
       // how far out this station is from the centre line
-      const halfW = w * 0.5 * Math.pow(Math.max(0, 1 - u * u), 0.28);
+      const halfW = w * 0.5 * Math.pow(Math.max(0, 1 - u * u), 0.26);
       const row = [];
       for (let iv = 0; iv <= VS; iv++) {
         const s = iv / VS;
-        const z = s < front ? 0 : Math.pow((s - front) / (1 - front), 0.85) * depth;
-        let y;
-        if (s < front) {
-          y = ridgeH * (s / front);
+        // The mound grows AWAY from the door, into the hill. Local +Z
+        // is out of the door, so this is -Z: get that backwards and the
+        // turf bank is built in front of the house instead of over it.
+        const back = Math.pow(s, 0.9) * depth;
+        let lift;
+        if (s < rise) {
+          lift = ridgeH * smoothstep(0, rise, s);
         } else {
-          const t = (s - front) / (1 - front);
-          const crown = Math.pow(Math.max(0, 1 - Math.pow(t, 1.7)), 0.5);
-          y = ridgeH * crown;
+          const u2 = (s - rise) / (1 - rise);
+          lift = ridgeH * Math.pow(Math.max(0, 1 - Math.pow(u2, 1.8)), 0.45);
         }
-        // lateral falloff: the mound narrows as it goes back
-        const scale = 1 - 0.34 * (z / depth);
+        // the mound narrows as it goes back
+        const scale = 1 - 0.30 * (back / depth);
         const x = u * halfW * scale;
-        const wx = h.x + Math.cos(h.rot) * x + Math.sin(h.rot) * z;
-        const wz = h.z - Math.sin(h.rot) * x + Math.cos(h.rot) * z;
+        // the face of the bank bulges forward in the middle, and the
+        // ridge wanders: a ruled surface reads as a slab, a bulged one
+        // reads as earth
+        const bulge = 1.0 - u * u;
+        const back2 = Math.max(0, back - 0.95 * bulge * (1 - smoothstep(0, rise, s)));
+        // The ridge must wander smoothly. A random value per grid cell
+        // puts a metre-scale step between neighbours, which shreds the
+        // normals — the bank then reads as a slab of flat grey because
+        // every face looks vertical to the shader.
+        const wobble = 0.90
+          + 0.15 * Math.sin(u * 2.4 + (h.seed % 17) * 0.37)
+          + 0.09 * Math.sin(s * 5.1 + u * 1.7 + (h.seed % 11) * 0.23);
+        const wx = h.x + Math.cos(h.rot) * x - Math.sin(h.rot) * back2;
+        const wz = h.z - Math.sin(h.rot) * x - Math.cos(h.rot) * back2;
         const g0 = field.height(wx, wz);
-        const rough = (fbmLike(x * 0.55, z * 0.55) * 0.28 + fbmLike(x * 1.9 + 40, z * 1.9) * 0.10) * smoothstep(0, 0.4, s);
-        y += rough;
-        // tuck the back under the ground
-        if (s > 0.72) y = lerp(y, g0 - 0.7, smoothstep(0.72, 1.0, s));
-        if (s < front * 0.35) y = lerp(g0 - 0.5, y, smoothstep(0, front * 0.35, s));
-        row.push([wx, y, wz, x, z, u, s]);
+        const rough = (fbmLike(x * 0.38, back * 0.30) * 0.34 +
+          fbmLike(x * 1.15 + 40, back * 0.9) * 0.10) * smoothstep(0, 0.4, s);
+        let y = baseY + lift * wobble * (0.6 + 0.4 * bulge) + rough;
+        // tuck the back under the ground it is made of
+        if (s > 0.70) y = lerp(y, g0 - 0.8, smoothstep(0.70, 1.0, s));
+        // and blend the very front into the ground at the doorstep
+        if (s < rise * 0.35) y = lerp(g0 - 0.25, y, smoothstep(0, rise * 0.35, s));
+        row.push([wx, y, wz, x, back, u, s]);
       }
       rows.push(row);
     }
@@ -271,6 +290,10 @@ function buildHole(h, field, out, rng) {
         const i1 = b.vert(b2[0], b2[1], b2[2], 0, 1, 0, 1, 0, col);
         const i2 = b.vert(c[0], c[1], c[2], 0, 1, 0, 0, 1, col);
         const i3 = b.vert(d2[0], d2[1], d2[2], 0, 1, 0, 1, 1, col);
+        // Wound so the face points at the sky: (u,s) = (u,s) -> (u+1,s)
+        // -> (u+1,s+1) -> (u,s+1), and s runs away from the door. Get
+        // this backwards and every mound in the county is lit from
+        // underneath: a flat grey slab.
         b.quad(i0, i1, i3, i2);
       }
     }
@@ -300,28 +323,27 @@ function buildHole(h, field, out, rng) {
     const rows = [];
     for (let i = 0; i <= N; i++) {
       const a = -halfA + (i / N) * halfA * 2;
-      const [px, , pz] = arcPoint(a, 0);
-      const g0 = field.height(h.x + Math.cos(h.rot) * px + Math.sin(h.rot) * pz,
-        h.z - Math.sin(h.rot) * px + Math.cos(h.rot) * pz);
+      const g0 = field.height(
+        h.x + Math.cos(h.rot) * Math.sin(a) * wallR + Math.sin(h.rot) * (Math.cos(a) * wallR - wallR),
+        h.z - Math.sin(h.rot) * Math.sin(a) * wallR + Math.cos(h.rot) * (Math.cos(a) * wallR - wallR));
       const base = g0 - 1.1;
       const row = [];
-      // outward normal of the arc
-      const nx = Math.sin(a) * Math.cos(h.rot) - Math.cos(a) * Math.sin(h.rot);
-      const nz = -Math.sin(a) * Math.sin(h.rot) - Math.cos(a) * Math.cos(h.rot);
-      const nyv = 0;
+      // The arc's outward normal, in the wall's own frame: straight
+      // out of the door at a = 0, round to +X at a = 90 degrees. This
+      // is stored LOCAL — the whole hole is rotated into place later —
+      // and putting the already-rotated vector here lights every
+      // facade from the inside.
+      const lnx = Math.sin(a), lnz = Math.cos(a);
       const u = (i / N) * w * 0.42;
       for (let k = 0; k <= 3; k++) {
         const t = k / 3;
         // slight batter: the wall leans back a touch as it rises
         const inset = t * t * 0.16;
         const y = lerp(base, yTop, t);
-        const off = inset;
-        const wx = Math.sin(a) * (wallR - off) - Math.sin(a) * 0;
         row.push([
-          Math.sin(a) * (wallR - off), y, Math.cos(a) * (wallR - off) - wallR,
-          nx, nyv, nz, u, t * (yTop - base) * 0.42, wallCol
+          Math.sin(a) * (wallR - inset), y, Math.cos(a) * (wallR - inset) - wallR,
+          lnx, 0, lnz, u, t * (yTop - base) * 0.42, wallCol
         ]);
-        void wx;
       }
       rows.push(row);
     }
@@ -336,29 +358,37 @@ function buildHole(h, field, out, rng) {
         );
       }
     }
-    // a stone plinth along the base
+    // a stone plinth along the base, with a matching radial normal
     for (let i = 0; i < N; i++) {
-      const a = rows[i][0], b2 = rows[i + 1][0];
-      const g0 = field.height(
-        h.x + Math.cos(h.rot) * a[0] + Math.sin(h.rot) * a[2],
-        h.z - Math.sin(h.rot) * a[0] + Math.cos(h.rot) * a[2]);
-      const g1 = field.height(
-        h.x + Math.cos(h.rot) * b2[0] + Math.sin(h.rot) * b2[2],
-        h.z - Math.sin(h.rot) * b2[0] + Math.cos(h.rot) * b2[2]);
-      const th = 0.34;
-      const o = 0.05;
-      const A = arcPoint(-halfA + (i / N) * halfA * 2, 0);
-      const B = arcPoint(-halfA + ((i + 1) / N) * halfA * 2, 0);
+      const aA = -halfA + (i / N) * halfA * 2;
+      const aB = -halfA + ((i + 1) / N) * halfA * 2;
+      const A = [Math.sin(aA) * wallR, 0, Math.cos(aA) * wallR - wallR];
+      const B = [Math.sin(aB) * wallR, 0, Math.cos(aB) * wallR - wallR];
+      const gA = field.height(
+        h.x + Math.cos(h.rot) * A[0] + Math.sin(h.rot) * A[2],
+        h.z - Math.sin(h.rot) * A[0] + Math.cos(h.rot) * A[2]);
+      const gB = field.height(
+        h.x + Math.cos(h.rot) * B[0] + Math.sin(h.rot) * B[2],
+        h.z - Math.sin(h.rot) * B[0] + Math.cos(h.rot) * B[2]);
+      const th = 0.34, o = 0.05;
       const sc = new THREE.Color(0xc0b6a2);
-      const p = [
-        [A[0] + Math.sin(0) * o, g0 - 0.5, A[2] - o],
-        [B[0], g1 - 0.5, B[2] - o],
-        [B[0], g1 + th, B[2] - o],
-        [A[0], g0 + th, A[2] - o]
+      const mk = (P, g, y) => [
+        P[0] - Math.sin(aA) * 0, y, P[2] - Math.cos(0) * 0
       ];
-      const q = p.map((q2, k) => b.vert(q2[0], q2[1], q2[2], 0, 0, 1, (k % 2) * 0.5, (k > 1 ? 1 : 0), sc));
+      void mk;
+      const nA = [Math.sin(aA), 0, Math.cos(aA)];
+      const nB = [Math.sin(aB), 0, Math.cos(aB)];
+      const pa = [A[0] - nA[2] * o, gA - 0.5, A[2] + nA[0] * o];
+      const pb = [B[0] - nB[2] * o, gB - 0.5, B[2] + nB[0] * o];
+      const pc = [B[0] - nB[2] * o * 1.4, gB + th, B[2] + nB[0] * o * 1.4];
+      const pd = [A[0] - nA[2] * o * 1.4, gA + th, A[2] + nA[0] * o * 1.4];
+      const q = [
+        b.vert(pa[0], pa[1], pa[2], nA[0], 0, nA[2], 0, 0, sc),
+        b.vert(pb[0], pb[1], pb[2], nB[0], 0, nB[2], 1, 0, sc),
+        b.vert(pc[0], pc[1], pc[2], nB[0], 0, nB[2], 1, 1, sc),
+        b.vert(pd[0], pd[1], pd[2], nA[0], 0, nA[2], 0, 1, sc)
+      ];
       b.quad(q[0], q[1], q[2], q[3]);
-      void a; void b2;
     }
     put(b);
   }
@@ -832,6 +862,10 @@ export class Buildings {
     add(out.stone, mats.mStone, true, true, 'stonework');
     add(out.mount, mats.mStone, true, true, 'stonework-2');
     if (out.mound.p.length && mats.mMound) {
+      // the fringe at the foot of the bank sits just under the door sill
+      const lowest = out.mound.p.reduce((m, y) => Math.min(m, y), Infinity);
+      mats.mMound.userData.shader?.uniforms.uBankBase &&
+        (mats.mMound.userData.shader.uniforms.uBankBase.value = lowest);
       const mesh = add(out.mound, mats.mMound, true, true, 'mounds');
       if (mesh) mesh.name = 'mounds';
     }
@@ -871,14 +905,15 @@ export class Buildings {
       const card = new THREE.PlaneGeometry(1, 1);
       const mat = new THREE.MeshStandardMaterial({
         map: leafClusterTexture(['#4a6f30', '#385a24', '#628a3a']),
-        alphaTest: 0.42, side: THREE.DoubleSide, roughness: 0.85, vertexColors: true
+        alphaTest: 0.42, side: THREE.DoubleSide, roughness: 0.85
       });
       const inst = new THREE.InstancedMesh(card, mat, out.roseCards.length);
       const col = new THREE.Color();
       for (let i = 0; i < out.roseCards.length; i++) {
         inst.setMatrixAt(i, out.roseCards[i].m);
-        const v = 0.7 + out.roseCards[i].tint * 0.6;
-        col.setRGB(v, v * 0.95, v * 0.9);
+        const v = 0.62 + out.roseCards[i].tint * 0.5;
+        // the map is luminance only, so the green has to come from here
+        col.setRGB(v * 0.44, v * 0.92, v * 0.40);
         inst.setColorAt(i, col);
       }
       inst.instanceMatrix.needsUpdate = true;

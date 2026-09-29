@@ -448,7 +448,7 @@ export class Props {
         const geo = new THREE.PlaneGeometry(1, 1);
         geo.rotateX(-Math.PI / 2);
         const mat = new THREE.MeshStandardMaterial({
-          map: flowerTexture(), roughness: 0.9, side: THREE.DoubleSide, vertexColors: true
+          map: flowerTexture(), roughness: 0.9, side: THREE.DoubleSide
         });
         const inst = new THREE.InstancedMesh(geo, mat, spots.length);
         const m = new THREE.Matrix4();
