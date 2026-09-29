@@ -54,7 +54,13 @@ const GodRaysShader = {
       vec3 acc = vec3(0.0);
       for (int i = 0; i < 24; i++) {
         uv -= delta;
-        vec3 s = texture2D(tDiffuse, clamp(uv, 0.0, 1.0)).rgb;
+        // A sample that has walked off the edge of the frame
+        // contributes nothing. Clamping it to the edge instead makes
+        // twenty-four identical taps of one bright border texel, and
+        // the sky ends up covered in hard bright blocks.
+        float inside = step(0.0, uv.x) * step(uv.x, 1.0)
+                     * step(0.0, uv.y) * step(uv.y, 1.0);
+        vec3 s = texture2D(tDiffuse, clamp(uv, 0.0, 1.0)).rgb * inside;
         float lum = dot(s, vec3(0.2126, 0.7152, 0.0722));
         float w = smoothstep(uThreshold, uThreshold + 0.32, lum);
         acc += s * w * decay;

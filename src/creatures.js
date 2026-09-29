@@ -135,7 +135,11 @@ function moteSystem(field, opts) {
 
         vec4 mv = modelViewMatrix * vec4(wp, 1.0);
         gl_Position = projectionMatrix * mv;
-        gl_PointSize = uSize * uPixelScale / max(0.5, -mv.z);
+        // A mote that drifts into the lens is magnified past the
+        // point of being a glow, and past the point of being round.
+        // Cap the size and let the near ones go.
+        gl_PointSize = min(uSize * uPixelScale / max(0.5, -mv.z), 42.0);
+        vAlpha *= smoothstep(0.7, 2.2, -mv.z);
         if (vAlpha < 0.004) gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
       }
     `,
@@ -366,7 +370,7 @@ function birdSystem(count, sprite) {
         vec2 dir = normalize(vec2(-sin(t * sp + ph) * sp, cos(t * sp * 0.83 + ph) * sp * 0.83) + 1e-5);
         vec3 fwd = normalize(vec3(dir.x, 0.0, dir.y));
         vec3 right = normalize(cross(vec3(0.0, 1.0, 0.0), fwd));
-        vec3 p = position;
+        vec3 p = position * 0.42;
         float side = sign(p.x);
         p.y += abs(p.x) * beat * 0.55;
         p.x *= 0.8 + 0.35 * abs(beat);
@@ -382,7 +386,7 @@ function birdSystem(count, sprite) {
       precision mediump float;
       uniform vec3 uColour;
       varying float vA;
-      void main() { gl_FragColor = vec4(uColour, vA * 0.9); }
+      void main() { gl_FragColor = vec4(uColour, vA * 0.62); }
     `
   });
   const mesh = new THREE.Mesh(geo, mat);

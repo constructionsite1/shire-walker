@@ -763,10 +763,27 @@ export class Trees {
       }
       if (!leafMat.has(kind)) {
         const lt = spec.leafTex();
-        leafMat.set(kind, new THREE.MeshStandardMaterial({
+        const lm = new THREE.MeshStandardMaterial({
           map: lt, alphaTest: 0.30, side: THREE.DoubleSide,
           roughness: 0.86, metalness: 0, vertexColors: true, dithering: true
-        }));
+        });
+        // Stand under a tree and you are inside its canopy: a leaf
+        // card a metre from the eye fills the screen with one dark
+        // polygon. Dither the near leaves away instead -- opaque, so
+        // it costs no sorting and no blending.
+        lm.onBeforeCompile = (sh) => {
+          sh.fragmentShader = sh.fragmentShader.replace(
+            '#include <clipping_planes_fragment>', /* glsl */`
+              #include <clipping_planes_fragment>
+              float camDist = length(vViewPosition);
+              float near = smoothstep(1.1, 3.0, camDist);
+              if (near < 0.999) {
+                float dth = fract(sin(dot(gl_FragCoord.xy, vec2(12.9898, 78.233))) * 43758.5453);
+                if (dth > near) discard;
+              }
+            `);
+        };
+        leafMat.set(kind, lm);
       }
 
       for (let patch = 0; patch < PATCHES; patch++) {
