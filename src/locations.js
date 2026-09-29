@@ -68,7 +68,7 @@ function bagEnd() {
     id: 'bagend',
     x, y, z,
     rot: faceDir(0.52, 0.85),        // the door looks down the slope, south
-    w: 17.0, d: 13.0,
+    w: 11.5, d: 12.0,
     wallH: 2.2,
     doorCol: 0x3f7a2a,
     wallHex: 0xf6e6c4,
@@ -328,9 +328,13 @@ function bankShapes(holes) {
       depth: Math.max(d * (isGrand ? 2.1 : 1.9),
                       (h.wallH + (isGrand ? 3.0 : 2.2)) * 2.4),
       rise: 0.17,
-      // The bank only has to clear the facade by a good margin: the
-      // house is under the turf, and the whole point of a hobbit hole
-      // is that the grass is higher than the bricks.
+      // How high the turf comes on the face: the height of the door
+      // and its lintel, so the grass meets the top of the stonework
+      // instead of standing off behind it like a wall in a field.
+      head: (isGrand ? 0.92 : 0.78) * 2 + 0.85,
+      // The bank only has to clear the facade — the house itself is
+      // under the turf, and the whole point of a hobbit hole is that
+      // the grass is higher than the bricks.
       ridgeH: h.wallH + (isGrand ? 3.0 : isMill ? 0.6 : 2.2),
       baseY: heightAt(h.x, h.z) - 0.4
     });

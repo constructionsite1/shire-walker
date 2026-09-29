@@ -377,27 +377,35 @@ function bankAt(x, z) {
     }
     const sn = t;
     const scale = 1 - 0.30 * t;
-    // The bank is a mound, not a mesa: it has to come down to nothing
-    // well inside the width of the house, or the turf reads as a table
-    // top and the facade stands on it like a wall on a plinth.
-    const halfW = Math.max(0.4, b.w * 0.5 * scale * Math.pow(Math.max(0, 1 - (lx / (b.w * 0.5)) ** 2), 0.78));
+    // Across its width the bank is a plateau, not a dome: the turf
+    // lies straight over the top of the house and only falls away
+    // past the ends of the stonework. Taper it inside the facade's
+    // own width and the wall stands proud of the bank like a fence
+    // in a field instead of holding the bank back.
+    const ax = Math.abs(lx) / (b.w * 0.5);
+    const halfW = Math.max(0.4, b.w * 0.5 * 1.55 * scale);
     if (Math.abs(lx) > halfW) continue;
-    const bulge2 = Math.max(0, 1 - (lx / (b.w * 0.5)) ** 2);
-    // The turf line: nothing at all in front of the door, where the
-    // facade is a retaining wall, then a cut-and-fill bank up behind
-    // it and a long roll over the roof. The face gets the same slope
-    // whatever the house is — forty degrees, which is what a bank
-    // someone dug and planted actually is, and gentle enough that
-    // the ground shader still calls it turf.
-    const face = b.ridgeH * 1.15;
+    const plateau = 1 - smoothstep(0.88, 1.5, ax);
+    // The turf line. In front of the door there is no bank at all --
+    // that is where the facade is a retaining wall. Immediately behind
+    // it the turf climbs steeply to meet the top of that wall, so the
+    // grass comes down to the lintel the way it does in the films,
+    // then rolls over the roof and away down the far side.
+    const h1 = Math.min(b.head, b.ridgeH * 0.92);
+    const f1 = h1 * 1.15;                       // steep face, ~40 degrees
+    const f2 = f1 + (b.ridgeH - h1) * 2.1;      // gentler roll over the roof
     let lift;
     if (back <= 0) lift = 0;
-    else if (back < face) lift = b.ridgeH * smoothstep(0, 1, back / face);
-    else lift = b.ridgeH * Math.pow(1 - smoothstep(0, 1, (back - face) / (b.depth - face)), 0.85);
+    else if (back < f1) lift = h1 * smoothstep(0, 1, back / f1);
+    else if (back < f2) lift = lerp(h1, b.ridgeH, smoothstep(0, 1, (back - f1) / (f2 - f1)));
+    else {
+      const t = clamp((back - f2) / Math.max(0.5, b.depth - f2), 0, 1);
+      lift = b.ridgeH * Math.pow(1 - smoothstep(0, 1, t), 0.85);
+    }
     const wobble = 0.90
       + 0.15 * Math.sin((lx / Math.max(halfW, 0.01)) * 2.4 + (b.seed % 17) * 0.37)
       + 0.09 * Math.sin(sn * 5.1 + (lx / Math.max(halfW, 0.01)) * 1.7 + (b.seed % 11) * 0.23);
-    let y = b.baseY + lift * wobble * (0.22 + 0.78 * bulge2);
+    let y = b.baseY + lift * wobble * plateau;
     y += (noise2(lx * 0.38, back * 0.30) * 0.34 + noise2(lx * 1.15 + 40, back * 0.9) * 0.10)
       * smoothstep(0, 0.4, sn);
     // Where the natural ground is already as high as the bank there

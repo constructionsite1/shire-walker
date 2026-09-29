@@ -229,7 +229,11 @@ function buildHole(h, field, out, rng) {
   /* ============================================================
      2. The facade: a gently curved wall with a heavy brow.
      ============================================================ */
-  const doorR = isGrand ? 0.62 : 0.55;
+  // The door is the size of a hobbit, which is the whole point of it:
+  // two metres of green paint you can walk through. Bag End's is a
+  // little grander, and the films' round doors are round enough to
+  // need a lintel over them.
+  const doorR = isGrand ? 0.92 : 0.78;
   const doorY = doorR + 0.06;
   const wallR = w * 1.15;
   const halfA = Math.asin(clamp((w * 0.5) / wallR, -0.99, 0.99));
@@ -247,18 +251,46 @@ function buildHole(h, field, out, rng) {
     const b = new Builder();
     const N = Math.max(10, Math.round(w * 1.6));
     const rows = [];
+    // Where the turf is, a little behind the wall. The facade is the
+    // face the bank is held back by, so its top follows the turf line
+    // along the arc: high where the bank stands over the house, low
+    // at the ends where the bank has run out. A single level eaves
+    // line is what makes a facade read as a wall stood on a hill
+    // rather than a hole dug into it.
+    const wAt = (lx, lz) => field.height(
+      h.x + Math.cos(h.rot) * lx + Math.sin(h.rot) * lz,
+      h.z - Math.sin(h.rot) * lx + Math.cos(h.rot) * lz);
+    // Work out the whole eaves line first and smooth it: the height
+    // field is a couple of metres per sample, and a wall that steps
+    // with the grid reads as a staircase, not as a curve.
+    const top = [], ground = [];
     for (let i = 0; i <= N; i++) {
       const a = -halfA + (i / N) * halfA * 2;
-      const g0 = field.height(
-        h.x + Math.cos(h.rot) * Math.sin(a) * wallR + Math.sin(h.rot) * (Math.cos(a) * wallR - wallR),
-        h.z - Math.sin(h.rot) * Math.sin(a) * wallR + Math.cos(h.rot) * (Math.cos(a) * wallR - wallR));
-      // One eaves line for the whole arc, taken at the door. The turf
-      // bank is ground now, so the wall has to be a retaining face
-      // that the bank presses against — not a band that follows the
-      // mound up and over the roof, which is what sampling the local
-      // height here used to draw.
-      const base = Math.min(g0, eavesY) - 1.1;
-      const yTop = eavesY;
+      const lx = Math.sin(a) * wallR;
+      const lz = Math.cos(a) * wallR - wallR;
+      const g0 = wAt(lx, lz);
+      ground.push(g0);
+      // Enough wall to stand the door in: the leaf, a lintel over it,
+      // and a little to spare -- then follow the turf above that, so
+      // the facade is a face the bank is held back by and not a wall
+      // stood on a hill.
+      const head = doorR * 2 + 0.85;
+      top.push(Math.min(
+        Math.max(wAt(lx, lz - 1.7) + 0.5, g0 + head),
+        g0 + wallH * 1.9));
+    }
+    const smooth = top.slice();
+    for (let pass = 0; pass < 2; pass++) {
+      for (let i = 1; i < N; i++) {
+        smooth[i] = (smooth[i - 1] + smooth[i] * 2 + smooth[i + 1]) * 0.25;
+      }
+      smooth[0] = top[0]; smooth[N] = top[N];
+    }
+    for (let i = 0; i <= N; i++) {
+      const a = -halfA + (i / N) * halfA * 2;
+      const g0 = ground[i];
+      const yTop = smooth[i];
+      const base = Math.min(g0, yTop) - 1.1;
       const row = [];
       // The arc's outward normal, in the wall's own frame: straight
       // out of the door at a = 0, round to +X at a = 90 degrees. This
@@ -406,11 +438,34 @@ function buildHole(h, field, out, rng) {
     const jc = new THREE.Color(0x8a6537);
     const lw = new THREE.Color(h.doorCol).multiplyScalar(0.55);
     // a stone surround, just proud of the wall
-    ring(b, p[0], doorY, p[2] - 0.01, doorR + 0.10, 0.10, 20, 6, jc, 'z');
+    ring(b, p[0], doorY, p[2] + 0.06, doorR + 0.10, 0.10, 20, 6, jc, 'z');
     // a dark reveal so the doorway reads as a hole even when shut
-    disc(b, p[0], doorY, p[2] - 0.02, inner, 20, 0, 0, 1, new THREE.Color(0x120d08));
+    disc(b, p[0], doorY, p[2] + 0.015, inner, 20, 0, 0, 1, new THREE.Color(0x120d08));
     // lintel beam
-    box(b, p[0], doorY + doorR + 0.19, p[2] - 0.06, doorR + 0.24, 0.075, 0.075, null, jc, 1.6);
+    box(b, p[0], doorY + doorR + 0.19, p[2] + 0.10, doorR + 0.24, 0.075, 0.075, null, jc, 1.6);
+    // The brow: a heavy timber hood curved over the top of the door,
+    // which is the thing you actually remember about Bag End from a
+    // hundred yards away. It has to clear the leaf -- arc it over the
+    // top of the doorway, not through the middle of it.
+    {
+      const brow = new THREE.Color(0x4e3a24);
+      const browLit = new THREE.Color(0x6d5233);
+      const segs = 11, r = doorR + 0.30;
+      for (let i = 0; i < segs; i++) {
+        const t0 = (i / segs) * Math.PI, t1 = ((i + 1) / segs) * Math.PI;
+        const a0 = Math.cos(t0) * r, y0 = doorGround + doorY + Math.sin(t0) * (doorR + 0.20);
+        const a1 = Math.cos(t1) * r, y1 = doorGround + doorY + Math.sin(t1) * (doorR + 0.20);
+        const mx = (a0 + a1) / 2, my = (y0 + y1) / 2;
+        const len = Math.hypot(a1 - a0, y1 - y0) * 1.14;
+        const ang = Math.atan2(y1 - y0, a1 - a0);
+        const m = new THREE.Matrix4()
+          .makeRotationZ(ang)
+          .multiply(new THREE.Matrix4().makeTranslation(p[0] + mx, my, p[2] + 0.19));
+        const sb = new Builder();
+        box(sb, 0, 0, 0, len, 0.20, 0.40, null, i % 2 ? brow : browLit, 2);
+        b.mergeGeo(sb.build(), m);
+      }
+    }
     // a step
     const g0 = doorGround;
     box(b, p[0] - Math.sin(a) * 0, g0 + 0.07, p[2] + 0.42, doorR + 0.3, 0.075, 0.42, null, new THREE.Color(0xc2b8a4), 1.2);
@@ -418,7 +473,7 @@ function buildHole(h, field, out, rng) {
     // door-side jamb posts
     for (const s of [-1, 1]) {
       box(b, p[0] + s * (doorR + 0.14) * Math.cos(a), doorGround + doorY * 0.5 + 0.2,
-        p[2] - s * (doorR + 0.14) * Math.sin(a) - 0.04, 0.075, doorY * 0.55, 0.09, null, jc, 1.6);
+        p[2] - s * (doorR + 0.14) * Math.sin(a) + 0.07, 0.075, doorY * 0.55, 0.09, null, jc, 1.6);
     }
     void lw;
     put(b);
