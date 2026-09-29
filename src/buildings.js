@@ -478,7 +478,10 @@ function buildHole(h, field, out, rng) {
         a = ((h.doorU + (u < h.doorU ? -1 : 1) * (doorR + 1.5) / (w * 0.5)) * w * 0.5) / wallR;
       }
       const p = arcPoint(a, 0);
-      const yy = doorGround + 1.62 + (k % 2) * 0.42;
+      // Kept inside the eaves: a porthole that floats above the wall
+      // with turf showing under it is the give-away that the facade
+      // and the bank were drawn without reference to each other.
+      const yy = doorGround + wallH * (0.56 + (k % 2) * 0.17);
       // stone ring
       ring(winB, p[0], yy, p[2] - 0.012, R + 0.085, 0.075, 16, 5, frameCol, 'z');
       // a sill

@@ -11,7 +11,7 @@
    ============================================================ */
 
 import * as THREE from 'three';
-import { TAU, clamp, lerp, smoothstep, makeRng, hash2, PALETTE } from './constants.js';
+import { TAU, clamp, lerp, smoothstep, makeRng, hash2, PALETTE, LANES } from './constants.js';
 import { heightAt, riverAt, roadAt, fieldAt } from './noise.js';
 import {
   plankTexture, drystoneTexture, soilTexture, flowerTexture,
@@ -192,14 +192,24 @@ export class Props {
        ============================================================ */
     {
       const spots = [];
-      for (let t = 0; t < 1; t += 0.075) {
-        const i = Math.min(17, Math.floor(t * 17));
-        const f = t * 17 - i;
-        const a = [[24, 112], [8, 96], [-8, 82], [-22, 70], [-32, 58]][Math.min(4, Math.floor(i / 4))];
-        const b2 = [[24, 112], [8, 96], [-8, 82], [-22, 70], [-32, 58]][Math.min(4, Math.floor(i / 4) + 1)];
-        if (!b2) break;
-        const x = lerp(a[0], b2[0], f), z = lerp(a[1], b2[1], f);
-        spots.push([x + 2.6, z + 2.0]);
+      // They follow the lanes as drawn, set a stride to the side of
+      // the way. (A private copy of the lane, kept here by hand, is a
+      // copy that is wrong the moment a lane moves -- and a line of
+      // lamp posts striding off across the county on their own.)
+      for (const lane of [LANES[0], LANES[1]]) {
+        let carry = 0;
+        for (let s = 0; s + 1 < lane.length; s++) {
+          const a = lane[s], b2 = lane[s + 1];
+          const dx = b2[0] - a[0], dz = b2[1] - a[1];
+          const len = Math.hypot(dx, dz);
+          if (len < 0.5) continue;
+          const ux = dx / len, uz = dz / len;
+          for (let d = carry; d < len; d += 13.5) {
+            const px = -uz * 2.5, pz = ux * 2.5;
+            spots.push([a[0] + ux * d + px, a[1] + uz * d + pz]);
+          }
+          carry = (carry + len) % 13.5;
+        }
       }
       for (const [x, z] of spots) {
         const gy = heightAt(x, z);

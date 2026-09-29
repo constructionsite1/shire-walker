@@ -50,8 +50,10 @@ const GRASS_FRAG_PARS = /* glsl */`
 `;
 
 function bladeGeometry() {
-  // A single tapered blade, four rows so the bend reads.
-  const rows = 4, cols = 2;
+  // A single tapered blade, three rows: two quads, four triangles.
+  // Four rows looks a shade better and costs a third more blades than
+  // the eye can pick out at running speed.
+  const rows = 3, cols = 2;
   const pos = [], nrm = [], uv = [], idx = [];
   for (let r = 0; r < rows; r++) {
     const v = r / (rows - 1);
@@ -140,6 +142,12 @@ export class Grass {
             objectNormal = vec3(ca * objectNormal.x + sa * objectNormal.z,
                                 objectNormal.y,
                                -sa * objectNormal.x + ca * objectNormal.z);
+            // A blade is a vertical surface, and a vertical surface
+            // catches almost nothing from a sun that is mostly overhead
+            // -- which is why naive grass is a field of dark slivers
+            // lying on bright ground. Lean the normal back toward the
+            // sky and the meadow lights like the meadow.
+            objectNormal = normalize(mix(vec3(0.0, 1.0, 0.0), objectNormal, 0.55));
           }
         `)
         .replace('#include <begin_vertex>', /* glsl */`
@@ -148,9 +156,17 @@ export class Grass {
           float _ca = cos(_ang), _sa = sin(_ang);
           mat3 _rot = mat3(_ca, 0.0, -_sa, 0.0, 1.0, 0.0, _sa, 0.0, _ca);
 
+          // The blade's own cell, wrapped into a grid that follows the
+          // camera. Wrapping is the whole trick: it lets a fixed pool
+          // of instances stand in for an endless field. Get the sign
+          // wrong and every blade in the county piles onto the spot
+          // you are standing in.
+          const vec2 SPAN = vec2(${side.toFixed(1)});
+          const vec2 HALF = SPAN * 0.5;
           vec2 _base = aCell + aJitter;
-          vec2 _cell = floor(uCamXZ / uCell + 0.5 - _base);
-          vec2 _wp = (_base + _cell) * uCell;
+          vec2 _c = uCamXZ / uCell;
+          vec2 _rel = mod(_base - _c + HALF, SPAN) - HALF;
+          vec2 _wp = (_c + _rel) * uCell;
           vec2 _uv = _wp / (uSpan * 2.0) + 0.5;
           vec4 _F = texture2D(uField, _uv);
           float _gh = _F.r * 100.0;
@@ -169,7 +185,7 @@ export class Grass {
             vTint = vec3(0.0);
             vY = 0.0;
           } else {
-            float _h = uHeight * (0.52 + aRand.x * 1.05) * (0.66 + 0.6 * _dens);
+            float _h = uHeight * (0.46 + aRand.x * 0.82) * (0.66 + 0.6 * _dens);
             float _w = uWidth * (0.62 + aRand.y * 0.72);
             vec3 _p = _rot * vec3(position.x * _w, position.y * _h, position.z * _h);
 
@@ -188,10 +204,10 @@ export class Grass {
             // blades have to be a shade lighter and warmer than the
             // ground under them or they vanish into it.
             float _patch = texture2D(uField, _uv * 3.1 + vec2(0.37, 0.61)).g;
-            vec3 _lo = vec3(0.19, 0.26, 0.115);
-            vec3 _hi = vec3(0.40, 0.50, 0.225);
+            vec3 _lo = vec3(0.26, 0.35, 0.15);
+            vec3 _hi = vec3(0.53, 0.63, 0.31);
             vec3 _col = mix(_lo, _hi, _dens * 0.5 + _patch * 0.5);
-            _col *= 0.80 + 0.48 * aRand.y;
+            _col *= 0.84 + 0.40 * aRand.y;
             vTip = pow(position.y, 1.3);
             vTint = _col;
             vY = _gh;

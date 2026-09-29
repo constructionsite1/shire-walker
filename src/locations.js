@@ -74,7 +74,7 @@ function bagEnd() {
     wallHex: 0xf6e6c4,
     kind: 'grand',
     doorU: -0.06,
-    windows: 5,
+    windows: 4,
     gardenDepth: 9.5,
     seed: 4711,
     hedge: false

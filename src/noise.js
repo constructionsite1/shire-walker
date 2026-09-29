@@ -377,7 +377,10 @@ function bankAt(x, z) {
     }
     const sn = t;
     const scale = 1 - 0.30 * t;
-    const halfW = Math.max(0.4, b.w * 0.5 * scale * Math.pow(Math.max(0, 1 - (lx / (b.w * 0.5)) ** 2), 0.26));
+    // The bank is a mound, not a mesa: it has to come down to nothing
+    // well inside the width of the house, or the turf reads as a table
+    // top and the facade stands on it like a wall on a plinth.
+    const halfW = Math.max(0.4, b.w * 0.5 * scale * Math.pow(Math.max(0, 1 - (lx / (b.w * 0.5)) ** 2), 0.78));
     if (Math.abs(lx) > halfW) continue;
     const bulge2 = Math.max(0, 1 - (lx / (b.w * 0.5)) ** 2);
     // The turf line: nothing at all in front of the door, where the
@@ -394,7 +397,7 @@ function bankAt(x, z) {
     const wobble = 0.90
       + 0.15 * Math.sin((lx / Math.max(halfW, 0.01)) * 2.4 + (b.seed % 17) * 0.37)
       + 0.09 * Math.sin(sn * 5.1 + (lx / Math.max(halfW, 0.01)) * 1.7 + (b.seed % 11) * 0.23);
-    let y = b.baseY + lift * wobble * (0.6 + 0.4 * bulge2);
+    let y = b.baseY + lift * wobble * (0.22 + 0.78 * bulge2);
     y += (noise2(lx * 0.38, back * 0.30) * 0.34 + noise2(lx * 1.15 + 40, back * 0.9) * 0.10)
       * smoothstep(0, 0.4, sn);
     // Where the natural ground is already as high as the bank there
