@@ -417,8 +417,11 @@ function branchTree(gb, opts) {
       height * t * (1 - t * 0.06),
       dir.z * height * t + Math.cos(t * 4 + seed) * height * 0.08 * t
     ));
-    // root flare, then a slim taper
-    const r = (0.28 + 0.55 * (1 - t) * (1 - t)) * (0.8 + height * 0.055);
+    // root flare, then a slim taper. The girth grows with the tree but
+    // not without limit -- a landmark scaled up for the Party Field
+    // was ending up nine metres through.
+    const girth = 0.8 + Math.min(height * 0.055, 1.15);
+    const r = (0.28 + 0.55 * (1 - t) * (1 - t)) * girth;
     radii.push(r * (1 - t * 0.62) * (t < 0.14 ? 1 + (0.14 - t) * 3.4 : 1));
   }
   gb.add(tube(path, radii, 6), new THREE.Matrix4(), (i) => {
@@ -782,9 +785,20 @@ export class Trees {
 
       if (!barkMat.has(kind)) {
         const bt = spec.barkTex();
-        barkMat.set(kind, new THREE.MeshStandardMaterial({
+        const bm = new THREE.MeshStandardMaterial({
           map: bt, color: 0xffffff, roughness: 0.94, metalness: 0, vertexColors: true
-        }));
+        });
+        // A trunk is a vertical surface and a sun that is mostly
+        // overhead grazes it, so an oak's stem comes out as a black
+        // slab with a leaf-shaped dent in it. Nudge the normals up:
+        // the bark still reads round, and it reads as wood.
+        bm.onBeforeCompile = (sh) => {
+          sh.vertexShader = sh.vertexShader.replace('#include <beginnormal_vertex>', /* glsl */`
+            #include <beginnormal_vertex>
+            objectNormal = normalize(mix(vec3(0.0, 1.0, 0.0), objectNormal, 0.55));
+          `);
+        };
+        barkMat.set(kind, bm);
       }
       if (!leafMat.has(kind)) {
         const lt = spec.leafTex();
@@ -797,6 +811,14 @@ export class Trees {
         // polygon. Dither the near leaves away instead -- opaque, so
         // it costs no sorting and no blending.
         lm.onBeforeCompile = (sh) => {
+          sh.vertexShader = sh.vertexShader.replace('#include <beginnormal_vertex>', /* glsl */`
+            #include <beginnormal_vertex>
+            // Standing under a wood, every leaf in it is facing the
+            // ground, so the whole canopy is a black hole with a
+            // trunk in it. Lean the normals back toward the sky and
+            // the underside lights like the top.
+            objectNormal = normalize(mix(vec3(0.0, 1.0, 0.0), objectNormal, 0.45));
+          `);
           sh.fragmentShader = sh.fragmentShader.replace(
             '#include <clipping_planes_fragment>', /* glsl */`
               #include <clipping_planes_fragment>

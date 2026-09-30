@@ -210,7 +210,7 @@ function partyTree() {
   return {
     x, z, y: heightAt(x, z),
     rot: 0.4,
-    s: 2.35,             // considerably larger than any other tree
+    s: 1.8,             // a very old oak, but a tree, not a column
     kind: 'oak',
     lanterns: true
   };
