@@ -217,15 +217,29 @@ export class Water {
           vec2 pp = vec2(-fp.y, fp.x);
           float t = uTime;
 
-          // two scrolling ripple layers, plus a fine chop
+          // A long, slow swell underneath the chop. Two hundred
+          // metres out the fine ripple is smaller than a pixel and
+          // averages away to nothing, which is why distant water
+          // reads as a flat wash of paint: the eye needs something
+          // with a wavelength it can still see.
+          vec3 n0 = texture2D(uNormal, vWPos.xz * 0.014 - fp * t * 0.045).xyz * 2.0 - 1.0;
           vec3 n1 = texture2D(uNormal, vWPos.xz * 0.085 + fp * t * 0.10).xyz * 2.0 - 1.0;
           vec3 n2 = texture2D(uNormal, vWPos.xz * 0.21 - fp * t * 0.16 + pp * t * 0.03).xyz * 2.0 - 1.0;
           vec3 n3 = texture2D(uNormal, vWPos.xz * 0.62 + pp * t * 0.26).xyz * 2.0 - 1.0;
           float rip = (1.0 - smoothstep(0.0, 2.2, depth)) * 0.35 + 1.0;
           vec3 N = normalize(vec3(
-            (n1.x * 0.7 + n2.x * 0.4 + n3.x * 0.16) * rip,
+            (n0.x * 0.95 + n1.x * 0.7 + n2.x * 0.4 + n3.x * 0.16) * rip,
             1.0,
-            (n1.z * 0.7 + n2.z * 0.4 + n3.z * 0.16) * rip));
+            (n0.z * 0.95 + n1.z * 0.7 + n2.z * 0.4 + n3.z * 0.16) * rip));
+
+          // Current lines: the noise stretched along the flow and
+          // squeezed across it, drifting downstream. This is the
+          // thing that makes moving water look like it is going
+          // somewhere rather than sitting there being blue.
+          vec2 fuv = vec2(dot(vWPos.xz, fp), dot(vWPos.xz, pp));
+          float cur = texture2D(uNormal, fuv * vec2(0.05, 0.55) - vec2(t * 0.09, 0.0)).y;
+          float cur2 = texture2D(uNormal, fuv * vec2(0.13, 1.30) - vec2(t * 0.22, 0.0)).y;
+          float streak = (cur * 0.65 + cur2 * 0.35 - 0.5) * 2.0;
 
           vec3 V = normalize(vView);
           float fres = pow(1.0 - clamp(dot(N, V), 0.0, 1.0), 4.0);
@@ -235,7 +249,8 @@ export class Water {
           vec3 R = reflect(-V, N);
           vec3 sky = mix(uHorizon, uZenith, pow(clamp(R.y * 0.5 + 0.5, 0.0, 1.0), 0.6));
           float sunSpec = pow(clamp(dot(R, uSunDir), 0.0, 1.0), 620.0) * 3.4
-                        + pow(clamp(dot(R, uSunDir), 0.0, 1.0), 46.0) * 0.28;
+                        + pow(clamp(dot(R, uSunDir), 0.0, 1.0), 46.0) * 0.28
+                        + pow(clamp(dot(R, uSunDir), 0.0, 1.0), 9.0) * 0.10;
           sky += uSunCol * sunSpec * (1.0 - uNight);
 
           // the bed, seen through the shallows
@@ -245,6 +260,10 @@ export class Water {
           body += uShallow * 0.5 * (1.0 - dt) * (0.6 + 0.4 * n2.y);
 
           vec3 col = mix(body, sky, fres * 0.86);
+
+          // the current, drawn on the surface rather than in it
+          col *= 1.0 + streak * 0.085 * (1.0 - uNight * 0.7);
+          col += uSunCol * max(0.0, streak) * 0.05 * (1.0 - uNight);
 
           // sparkle where the light finds the ripples
           float sp = pow(max(0.0, n3.y - 0.72) * 3.4, 3.0);
