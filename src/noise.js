@@ -440,7 +440,20 @@ export function heightAt(x, z) {
     h = lerp(h, Math.min(h, target) * tr + h * (1 - tr), tr * 0.85);
   }
   // and the turf bank of a hobbit hole stands on top of all that
-  return h + bankAt(x, z);
+  let y = h + bankAt(x, z);
+  // Ploughed fields. A crop field that is geometrically flat reads as
+  // a rectangle of paint from the ridge above it; the furrows are only
+  // a hand's depth, but they are the whole difference between a field
+  // and a green rectangle.
+  const fa = fieldAt(x, z);
+  if (fa > 0.01) {
+    const ang = 0.42;
+    const ca = Math.cos(ang), sa = Math.sin(ang);
+    const u = (x * ca - z * sa) * 0.62;
+    const ridge = (Math.sin(u) * 0.5 + Math.sin(u * 2.13 + 1.7) * 0.22) * 0.17;
+    y += ridge * fa * smoothstep(0.05, 0.5, fa);
+  }
+  return y;
 }
 
 /** Surface normal via central differences. */
