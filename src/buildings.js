@@ -497,9 +497,12 @@ function buildHole(h, field, out, rng) {
         const mx = (a0 + a1) / 2, my = (y0 + y1) / 2;
         const len = Math.hypot(a1 - a0, y1 - y0) * 1.14;
         const ang = Math.atan2(y1 - y0, a1 - a0);
+        // turn the block, THEN move it: the other order rotates it
+        // about the place it is going to, which throws it a couple of
+        // metres off across the county
         const m = new THREE.Matrix4()
-          .makeRotationZ(ang)
-          .multiply(new THREE.Matrix4().makeTranslation(p[0] + mx, my, p[2] + 0.19));
+          .makeTranslation(p[0] + mx, my, p[2] + 0.19)
+          .multiply(new THREE.Matrix4().makeRotationZ(ang));
         const sb = new Builder();
         box(sb, 0, 0, 0, len, 0.20, 0.40, null, i % 2 ? brow : browLit, 2);
         b.mergeGeo(sb.build(), m);

@@ -141,15 +141,21 @@ export class Sky {
           col = mix(col, uHorizon * 1.14, horizonGlow * 0.55);
 
           // ---- the sun: disc, aureole, and a long soft pillar
+          // Half a degree across is what it is. Drawn five times that
+          // it stops being a sun and becomes a headlight, and the
+          // tone mapper eats what colour it has left.
           float sd = dot(rd, uSunDir);
-          float disc = smoothstep(0.99930, 0.99968, sd);
+          float disc = smoothstep(0.999972, 0.999991, sd);
           float aureole = pow(clamp(sd, 0.0, 1.0), 900.0) * 0.6
                         + pow(clamp(sd, 0.0, 1.0), 62.0) * 0.16
                         + pow(clamp(sd, 0.0, 1.0), 7.0) * 0.05;
           float pillar = pow(clamp(1.0 - abs(rd.y - uSunDir.y) * 5.5, 0.0, 1.0), 3.0)
                        * pow(clamp(sd * 0.5 + 0.5, 0.0, 1.0), 5.0) * 0.05;
           float sunUp = smoothstep(-0.10, 0.02, uSunDir.y);
-          col += uSunCol * (disc * 5.0 + aureole * 1.7 + pillar) * sunUp;
+          // and a low sun is a red one, whatever the phase table says
+          float low = smoothstep(0.34, 0.01, uSunDir.y);
+          vec3 sunCol = mix(uSunCol, vec3(1.0, 0.34, 0.10), low * 0.88);
+          col += sunCol * (disc * 9.0 + aureole * 1.7 + pillar) * sunUp;
 
           // ---- the moon, with a phase and a soft halo
           float md = dot(rd, uMoonDir);
