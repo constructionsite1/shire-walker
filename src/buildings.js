@@ -862,7 +862,9 @@ export class Buildings {
     this.group.name = 'buildings';
     this.colliders = [];
     this.chimneys = [];
-    this.doors = [];
+    // the doors live in doorHolders, filled from the plan below; an
+    // empty `doors` array here used to sit next to it and look like
+    // the real one, which is a fine way to waste an afternoon
     this.interiorGlow = [];
     this.animated = [];
     this.lanternPositions = [];

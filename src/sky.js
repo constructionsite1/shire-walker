@@ -280,13 +280,16 @@ export class Sky {
 
     this.sun.color.copy(p.sun);
     this.sun.intensity = p.sunI;
-    this.moon.color.setRGB(0.62, 0.72, 1.0);
-    this.moon.intensity = p.night * 0.10;
+    this.moon.color.setRGB(0.66, 0.75, 1.0);
+    // Enough moon to walk home by. The films' nights are dark but
+    // they are not holes: there is a cold light on the grass and you
+    // can see the shape of the hill.
+    this.moon.intensity = p.night * 0.34;
     this.hemi.color.copy(p.zen).lerp(p.hor, 0.55).multiplyScalar(2.2);
     this.hemi.groundColor.setRGB(0.22, 0.26, 0.15);
     // never let the county go completely black: the sky is always
     // doing something, and the eye adapts
-    this.hemi.intensity = 0.34 + p.amb * 0.52;
+    this.hemi.intensity = 0.34 + p.amb * 0.52 + p.night * 0.16;
     this.bounce.color.copy(p.hor).lerp(new THREE.Color(0x8fae64), 0.5);
     this.bounce.intensity = 0.06 + p.amb * 0.14;
 
