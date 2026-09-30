@@ -44,13 +44,32 @@ const ALLOWED_ADDONS = new Set([
   'math/ImprovedNoise.js'
 ]);
 
-const THREE_URL = 'https://unpkg.com/three@0.169.0/build/three.module.js';
-const ADDONS_URL = 'https://unpkg.com/three@0.169.0/examples/jsm/';
+const THREE_URL = './vendor/three/build/three.module.js';
+const ADDONS_URL = './vendor/three/examples/jsm/';
+
+/* The files we keep a copy of, so the page never needs the network. */
+const VENDORED = [
+  'vendor/three/build/three.module.js',
+  'vendor/three/examples/jsm/postprocessing/EffectComposer.js',
+  'vendor/three/examples/jsm/postprocessing/Pass.js',
+  'vendor/three/examples/jsm/postprocessing/RenderPass.js',
+  'vendor/three/examples/jsm/postprocessing/ShaderPass.js',
+  'vendor/three/examples/jsm/postprocessing/MaskPass.js',
+  'vendor/three/examples/jsm/postprocessing/UnrealBloomPass.js',
+  'vendor/three/examples/jsm/postprocessing/OutputPass.js',
+  'vendor/three/examples/jsm/shaders/CopyShader.js',
+  'vendor/three/examples/jsm/shaders/LuminosityHighPassShader.js',
+  'vendor/three/examples/jsm/shaders/OutputShader.js',
+  'vendor/three/examples/jsm/shaders/FXAAShader.js'
+];
 
 function walk(dir, out = []) {
   if (!existsSync(dir)) return out;
   for (const name of readdirSync(dir)) {
     if (name === 'node_modules' || name === '.git' || name === '.verify') continue;
+    // three.js is vendored verbatim under vendor/; it is not our code
+    // to lint, scope or silence, so the build's own eyes skip it
+    if (name === 'vendor') continue;
     const p = join(dir, name);
     const st = statSync(p);
     if (st.isDirectory()) walk(p, out);
@@ -109,8 +128,25 @@ if (!existsSync(htmlPath)) {
       for (const k of Object.keys(imports)) {
         if (k !== 'three' && k !== 'three/addons/') fail(`unexpected import map key "${k}"`);
       }
+      // and the county fetches nothing at runtime from anyone else
+      const html = readFileSync(htmlPath, 'utf8');
+      for (const u of html.matchAll(/https?:\/\/[^"'\s)]+/g)) {
+        if (!/^https?:\/\/(www\.)?(w3\.org|github\.com|constructionsite1)/.test(u[0])) {
+          fail(`index.html reaches out to ${u[0]} at runtime; the county should be self-contained`);
+        }
+      }
     }
   }
+}
+
+/* ------------------------------------------------------------
+   2b. three.js is vendored, and actually there. A build that
+   depends on a CDN is a build whose visitors wait on somebody
+   else's server, and whose addons can change under it.
+   ------------------------------------------------------------ */
+startGroup('vendored');
+for (const f of VENDORED) {
+  if (!existsSync(join(ROOT, f))) fail(`vendored file missing: ${f}`);
 }
 
 /* ------------------------------------------------------------
