@@ -31,6 +31,44 @@ function quadXZ(b, cx, cy, cz, w, d, rot, colour) {
   b.quad(idx[0], idx[1], idx[2], idx[3]);
 }
 
+/* A box running from one point to another, with a cross-section.
+   boxGeo can only make axis-aligned boxes, which is fine for a wall
+   and useless for a bridge: laid end to end they come out as a
+   staircase of overlapping slabs at whatever angle the river
+   happened to be running. */
+function beamGeo(b, p0, p1, w, h, colour, uvScale = 0.6) {
+  const dx = p1[0] - p0[0], dy = p1[1] - p0[1], dz = p1[2] - p0[2];
+  const L = Math.hypot(dx, dz);
+  if (L < 1e-4) return;
+  const f = [dx / L, dz / L];
+  const r = [-f[1], f[0]];                 // horizontal, across the beam
+  const hw = w * 0.5, hh = h * 0.5;
+  const V = (t, s, v) => [
+    p0[0] + f[0] * L * t + r[0] * hw * s,
+    p0[1] + (p1[1] - p0[1]) * t + v,
+    p0[2] + f[1] * L * t + r[1] * hw * s
+  ];
+  const c = [
+    V(0, -1, -hh), V(1, -1, -hh), V(1, 1, -hh), V(0, 1, -hh),
+    V(0, -1, hh), V(1, -1, hh), V(1, 1, hh), V(0, 1, hh)
+  ];
+  const faces = [
+    { n: [0, 1, 0], v: [4, 5, 6, 7] },
+    { n: [0, -1, 0], v: [3, 2, 1, 0] },
+    { n: [-r[0], 0, -r[1]], v: [0, 3, 7, 4] },
+    { n: [r[0], 0, r[1]], v: [1, 2, 6, 5] },
+    { n: [-f[0], 0, -f[1]], v: [0, 1, 5, 4] },
+    { n: [f[0], 0, f[1]], v: [2, 3, 7, 6] }
+  ];
+  for (const fa of faces) {
+    const idx = fa.v.map((k, q) => b.vert(
+      c[k][0], c[k][1], c[k][2],
+      fa.n[0], fa.n[1], fa.n[2],
+      q === 1 || q === 2 ? 1 : 0, q > 1 ? 1 : 0, colour));
+    b.quad(idx[0], idx[1], idx[2], idx[3]);
+  }
+}
+
 function boxGeo(b, cx, cy, cz, hx, hy, hz, colour, uvScale = 0.6) {
   const faces = [
     { n: [0, 0, 1], v: [[-1, -1, 1], [1, -1, 1], [1, 1, 1], [-1, 1, 1]] },
@@ -269,40 +307,51 @@ export class Props {
     {
       const br = plan.bridge;
       const stone = new THREE.Color(0xc2b8a4);
-      const steps = 15;
-      for (let i = 0; i <= steps; i++) {
+      const cope = new THREE.Color(0xa89c86);
+      const steps = 14;
+      const half = br.w * 0.5;
+      const ux = Math.cos(br.rot), uz = Math.sin(br.rot);   // along the span
+      const rx = -uz, rz = ux;                               // across it
+      // The deck follows the arch of the crossing, and the parapets
+      // are one run of coping each rather than a row of loose blocks.
+      const P = (i) => {
         const t = i / steps;
         const s = (t - 0.5) * 2;
-        const x = br.x + Math.sin(br.rot) * s * br.w * 0.5 * 1.6;
-        const z = br.z + Math.cos(br.rot) * s * br.w * 0.5 * 1.6;
         const along = (t - 0.5) * br.d;
-        const bx = br.x + Math.sin(br.rot + Math.PI / 2) * along * 0.0 + Math.cos(br.rot + Math.PI / 2) * along;
-        const bz = br.z + Math.sin(br.rot + Math.PI / 2) * along;
-        void bx; void bz; void x; void z;
-        const px = br.x + Math.cos(br.rot) * along, pz = br.z + Math.sin(br.rot) * along;
-        const river = riverAt(px, pz);
-        const deck = river.level + 1.15 + Math.cos(s * Math.PI * 0.5) * 0.32;
-        const w = br.w * 0.5;
-        const ang = br.rot + Math.PI / 2;
-        const cx = px + Math.cos(ang) * 0, cz = pz + Math.sin(ang) * 0;
-        // deck
-        boxGeo(bStone, cx, deck, cz, Math.cos(ang) * w, 0.22, Math.abs(Math.sin(ang)) * w + Math.abs(Math.cos(ang)) * w,
-          stone.clone().multiplyScalar(0.92 + 0.16 * hash2(i, 2)), 1.1);
-        // parapets
+        const x = br.x + ux * along, z = br.z + uz * along;
+        const river = riverAt(x, z);
+        return {
+          x, z,
+          y: river.level + 1.05 + Math.cos(s * Math.PI * 0.5) * 0.55
+        };
+      };
+      for (let i = 0; i < steps; i++) {
+        const a = P(i), c = P(i + 1);
+        const tint = 0.9 + 0.18 * hash2(i, 3);
+        // the roadway
+        beamGeo(bStone, [a.x, a.y, a.z], [c.x, c.y, c.z], br.w, 0.34,
+          stone.clone().multiplyScalar(tint), 1.0);
+        // a parapet down each side, with a coping course on top
         for (const side of [-1, 1]) {
-          const ox = Math.cos(ang) * side * w, oz = Math.sin(ang) * side * w;
-          boxGeo(bStone, cx + ox, deck + 0.42, cz + oz, 0.16, 0.28, 0.42,
-            stone.clone().multiplyScalar(0.86 + 0.2 * hash2(i, side)), 1.3);
+          const ox = rx * half * side, oz = rz * half * side;
+          const p0 = [a.x + ox, a.y + 0.42, a.z + oz];
+          const p1 = [c.x + ox, c.y + 0.42, c.z + oz];
+          beamGeo(bStone, p0, p1, 0.30, 0.62,
+            stone.clone().multiplyScalar(tint * 0.92), 1.2);
+          beamGeo(bStone, [p0[0], p0[1] + 0.35, p0[2]], [p1[0], p1[1] + 0.35, p1[2]],
+            0.40, 0.14, cope.clone().multiplyScalar(0.95 + 0.12 * hash2(i, side)), 1.2);
         }
       }
-      // the pier
+      // the piers, stepped down into the channel -- under the deck,
+      // not four metres to the side of it
       const riverMid = riverAt(br.x, br.z);
-      for (const off of [-5, 5]) {
-        const px = br.x + Math.cos(br.rot + Math.PI / 2) * off;
-        const pz = br.z + Math.sin(br.rot + Math.PI / 2) * off;
-        for (let k = 0; k < 4; k++) {
-          boxGeo(bStone, px, riverMid.level - 1.2 + k * 0.7, pz, 2.4 - k * 0.14, 0.36, 0.5,
-            stone.clone().multiplyScalar(0.8 + 0.2 * hash2(k, off)), 1);
+      for (const off of [-1.3, 1.3]) {
+        const px = br.x + rx * off, pz = br.z + rz * off;
+        for (let k = 0; k < 5; k++) {
+          const wide = 2.2 - k * 0.16;
+          boxGeo(bStone, px, riverMid.level - 1.6 + k * 0.62, pz,
+            wide * 0.5, 0.30, br.w * 0.30,
+            stone.clone().multiplyScalar(0.78 + 0.2 * hash2(k, off)), 1);
         }
       }
     }

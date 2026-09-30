@@ -358,8 +358,47 @@ function buildHole(h, field, out, rng) {
   }
 
   /* ============================================================
-     3. The door: round, painted, with a brass knocker dead centre
+     2b. The Mill gets a roof. Every other house in the county is
+         under a bank, which is right for a hobbit hole and wrong
+         for a mill: a mill is a building with a wheel on it, and
+         without a ridge it is a curved slab with a wheel beside it.
      ============================================================ */
+  if (isMill) {
+    const b = new Builder();
+    const halfW2 = w * 0.54;
+    const z0 = -d * 0.52, z1 = d * 0.30;          // back to front
+    const eave = eavesY + 0.12;
+    const ridgeY = eave + w * 0.20;
+    const thatch = new THREE.Color(0x6b5a3c);
+    const thatchLit = new THREE.Color(0x87734e);
+    const dark = new THREE.Color(0x3b3226);
+    const mk = (x, y, z, n, c) => b.vert(x, y, z, n[0], n[1], n[2], 0, 0, c);
+    // two slopes
+    for (const s of [1, -1]) {
+      const za = s > 0 ? z1 : z0, zb = s > 0 ? z0 : z1;
+      const cA = s > 0 ? thatchLit : thatch;
+      const q = [
+        mk(-halfW2, eave, za, [0, 0.75, s * 0.66], cA),
+        mk(halfW2, eave, za, [0, 0.75, s * 0.66], cA),
+        mk(halfW2, ridgeY, zb, [0, 0.75, s * 0.66], cA),
+        mk(-halfW2, ridgeY, zb, [0, 0.75, s * 0.66], cA)
+      ];
+      if (s > 0) b.quad(q[0], q[1], q[2], q[3]); else b.quad(q[3], q[2], q[1], q[0]);
+    }
+    // the two gable ends, so the roof is not a floating sheet
+    for (const s of [-1, 1]) {
+      const q = [
+        mk(s * halfW2, eave, z0, [s, 0, 0], dark),
+        mk(s * halfW2, eave, z1, [s, 0, 0], dark),
+        mk(s * halfW2, ridgeY, (z0 + z1) * 0.5, [s, 0, 0], dark)
+      ];
+      if (s > 0) b.tri(q[0], q[1], q[2]); else b.tri(q[2], q[1], q[0]);
+    }
+    // a ridge cap, and the shadow it throws on the thatch
+    box(b, 0, ridgeY + 0.08, (z0 + z1) * 0.5, halfW2 * 2.02, 0.16, 0.34, null, dark, 1.4);
+    put(b);
+  }
+
   const doorA = h.doorU * w * 0.5;
   const doorLocal = arcPoint(doorA / wallR, 0);
   const doorWorldX = h.x + Math.cos(h.rot) * doorLocal[0] + Math.sin(h.rot) * doorLocal[2];

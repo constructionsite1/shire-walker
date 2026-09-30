@@ -335,7 +335,7 @@ function bankShapes(holes) {
       // The bank only has to clear the facade — the house itself is
       // under the turf, and the whole point of a hobbit hole is that
       // the grass is higher than the bricks.
-      ridgeH: h.wallH + (isGrand ? 3.0 : isMill ? 0.6 : 2.2),
+      ridgeH: h.wallH + (isGrand ? 3.0 : isMill ? -2.6 : 2.2),
       baseY: heightAt(h.x, h.z) - 0.4
     });
   }
