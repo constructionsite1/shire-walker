@@ -362,7 +362,14 @@ function bankAt(x, z) {
     const dx = x - b.x, dz = z - b.z;
     const lx = c * dx - s * dz;
     let back = -(s * dx + c * dz);
-    if (back < -1.5 || Math.abs(lx) > b.w * 0.62) continue;
+    // A bank is a mound of a certain size. Without a bound on how far
+    // back it reaches, every spot on the hillside behind a hole is
+    // still "on" the bank -- and since the bank's surface is measured
+    // from the ground at the door, a hole standing eleven metres above
+    // its neighbour stamps eleven metres of earth on the ground forty
+    // metres behind it.
+    if (back < -1.5 || back > b.depth * 1.02) continue;
+    if (Math.abs(lx) > b.w * 0.62) continue;
     // The face bulges forward in the middle, so solve for it: the
     // turf at a given ground distance sits that much nearer the
     // door. `back` and `cut` are both in metres — normalise only

@@ -382,7 +382,7 @@ function clump(builder, matrix, size, tint, rng, cards = 3) {
     const a = rng() * TAU;
     const tilt = (rng() - 0.5) * 1.5;
     const roll = rng() * TAU;
-    const s = size * (0.42 + rng() * 0.62);
+    const s = size * (0.28 + rng() * 0.44);
     const m = matrix.clone()
       .multiply(new THREE.Matrix4().makeRotationY(a))
       .multiply(new THREE.Matrix4().makeRotationX(tilt))
@@ -585,9 +585,9 @@ function bushTree(gb, rng, height, leaf, spread, d = 2) {
    the triangle budget in the whole scene. */
 function sp(height, spread, lean, seed, bark, leaf, tip, s) {
   return {
-    2: { height, spread, lean, seed, bark, leaf, tipSize: tip, levels: 2, cards: 4, limbs: 4 },
-    1: { height: height * 1.02, spread, lean, seed, bark, leaf, tipSize: tip * 1.06, levels: 1, cards: 3, limbs: 3 },
-    0: { height: height * 1.05, spread, lean, seed, bark, leaf, tipSize: tip * 1.14, levels: 1, cards: 2, limbs: 3 }
+    2: { height, spread, lean, seed, bark, leaf, tipSize: tip, levels: 2, cards: 7, limbs: 4 },
+    1: { height: height * 1.02, spread, lean, seed, bark, leaf, tipSize: tip * 1.06, levels: 1, cards: 5, limbs: 3 },
+    0: { height: height * 1.05, spread, lean, seed, bark, leaf, tipSize: tip * 1.14, levels: 1, cards: 3, limbs: 3 }
   };
 }
 
